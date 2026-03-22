@@ -1,46 +1,53 @@
 # Playwright Automation Suite
 
-A collection of Python + Playwright desktop automation tools built with Tkinter.
+Bộ công cụ tự động hóa trình duyệt web dựa trên **Python + Playwright**, giao diện đồ họa **Tkinter**.
 
-## Projects
+---
+
+## Các dự án
 
 ### [`auto_change_password`](./auto_change_password/README.md)
-Batch password-change automation for web accounts.  
-Supports importing account lists from **CSV**, **Excel**, and **TXT** files, then automates login and password-change flows through a Chromium browser using Playwright.
+Tự động đổi mật khẩu hàng loạt cho tài khoản web.  
+Hỗ trợ nhập danh sách tài khoản từ **CSV**, **Excel**, và **TXT**, sau đó tự động đăng nhập và thực hiện quy trình đổi mật khẩu qua trình duyệt Chromium.
 
 ### [`auto_web_ghost`](./auto_web_ghost/README.md)
-Generic Playwright web-flow automation tool.  
-Navigates to a target URL, performs configurable login/interaction steps, and captures screenshots — useful for smoke-testing or scripting repetitive browser tasks.
+Công cụ tự động hóa luồng thao tác trên web.  
+Điều hướng đến URL mục tiêu, thực hiện các bước đăng nhập / tương tác có thể cấu hình, và chụp ảnh màn hình — phù hợp để kiểm thử nhanh hoặc tự động hóa các tác vụ lặp lại trên trình duyệt.
 
-## Requirements
+---
+
+## Yêu cầu
 
 - Python 3.10+
-- [Playwright](https://playwright.dev/python/) (`pip install playwright && playwright install chromium`)
-- See each sub-project's `requirements.txt` for full dependencies.
+- [Playwright](https://playwright.dev/python/) — `pip install playwright && playwright install chromium`
+- Xem `requirements.txt` của từng dự án con để biết đầy đủ thư viện cần thiết.
 
-## Quick Start
+---
 
-```bash
-# Clone the repository
+## Bắt đầu nhanh
+
+```powershell
+# Clone repository
 git clone https://github.com/lvuxyz/playwright-automation-suite.git
 cd playwright-automation-suite
 
-# Create and activate a virtual environment
+# Tạo và kích hoạt môi trường ảo
 python -m venv .venv
-.venv\Scripts\activate      # Windows
-# source .venv/bin/activate  # macOS / Linux
+.\.venv\Scripts\Activate.ps1
 
-# Install dependencies for a sub-project
+# Cài đặt thư viện cho dự án con (ví dụ: auto_change_password)
 pip install -r auto_change_password/requirements.txt
 playwright install chromium
 
-# Copy and edit the config
+# Sao chép file cấu hình mẫu và chỉnh sửa
 copy auto_change_password\config.example.py auto_change_password\config.py
 
-# Run
+# Chạy ứng dụng
 python auto_change_password/main.py
 ```
 
-## License
+---
+
+## Giấy phép
 
 MIT
