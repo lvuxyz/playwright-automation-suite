@@ -33,12 +33,12 @@ VNG_LOGIN_URL = (
 
 # Selectors đặc thù cho trang VNG Games ID (phân tích từ HTML)
 VNG_SELECTORS = {
-    "email_phone":   'input[data-id="input_email_phone"]',
-    "password":      'input[type="password"]',
-    "btn_continue":  'button[data-id="login_button_continue"]',
-    # Sau bước "Tiếp tục", nút Đăng nhập có thể cùng data-id hoặc khác —
-    # thử login_button_login trước, fallback về login_button_continue.
-    "btn_login":     'button[data-id="login_button_login"], button[data-id="login_button_continue"]',
+    # Bước 1 — nhập email/SĐT
+    "email_phone":  'input[data-id="input_email_phone"]',
+    "btn_continue": 'button[data-id="login_button_continue"]',
+    # Bước 2 — nhập mật khẩu
+    "password":     'input[data-id="input_password"]',
+    "btn_login":    'button[data-id="login_button_continue_and_play"]',
 }
 
 # Nạp config nếu có, không thì dùng giá trị rỗng
