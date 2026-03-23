@@ -31,6 +31,16 @@ VNG_LOGIN_URL = (
     "&client_id=0&ggid=3275c55fbd63e981&lang=vi"
 )
 
+# Selectors đặc thù cho trang VNG Games ID (phân tích từ HTML)
+VNG_SELECTORS = {
+    "email_phone":   'input[data-id="input_email_phone"]',
+    "password":      'input[type="password"]',
+    "btn_continue":  'button[data-id="login_button_continue"]',
+    # Sau bước "Tiếp tục", nút Đăng nhập có thể cùng data-id hoặc khác —
+    # thử login_button_login trước, fallback về login_button_continue.
+    "btn_login":     'button[data-id="login_button_login"], button[data-id="login_button_continue"]',
+}
+
 # Nạp config nếu có, không thì dùng giá trị rỗng
 try:
     from config import BASE_URL, BROWSER, CHANGE_PASSWORD_URL  # type: ignore
@@ -77,6 +87,63 @@ LogFn = Callable[[str], None]
 
 def _log_noop(msg: str) -> None:
     pass
+
+
+def _vng_login(page: Page, username: str, password: str, log: LogFn) -> None:
+    """Đăng nhập trang VNG Games ID (id.vnggames.app/login).
+
+    Luồng 2 bước:
+        Bước 1 — Email:
+            1. Chờ input email/SĐT xuất hiện
+            2. Điền email/SĐT
+            3. Chờ nút "Tiếp tục" được enable → click
+
+        Bước 2 — Mật khẩu:
+            4. Chờ input password visible (hiện sau khi qua bước 1)
+            5. Điền mật khẩu
+            6. Chờ nút "Đăng nhập" được enable → click
+            7. Chờ URL thoát khỏi /login = thành công
+    """
+    timeout = BROWSER.get("timeout", 15_000)
+
+    # ── Bước 1: Email / SĐT ──────────────────────────────────────────────────
+    page.wait_for_selector(VNG_SELECTORS["email_phone"], state="visible", timeout=timeout)
+
+    log(f"  → Điền email/SĐT: {username}")
+    page.click(VNG_SELECTORS["email_phone"])
+    page.fill(VNG_SELECTORS["email_phone"], username)
+
+    log("  → Chờ nút Tiếp tục được kích hoạt...")
+    page.wait_for_selector(
+        f'{VNG_SELECTORS["btn_continue"]}:not([disabled])',
+        state="visible",
+        timeout=10_000,
+    )
+    log("  → Bấm Tiếp tục")
+    page.click(VNG_SELECTORS["btn_continue"])
+
+    # ── Bước 2: Mật khẩu ─────────────────────────────────────────────────────
+    log("  → Chờ trường mật khẩu xuất hiện...")
+    page.wait_for_selector(VNG_SELECTORS["password"], state="visible", timeout=timeout)
+
+    log("  → Điền mật khẩu")
+    page.click(VNG_SELECTORS["password"])
+    page.fill(VNG_SELECTORS["password"], password)
+
+    log("  → Chờ nút Đăng nhập được kích hoạt...")
+    page.wait_for_selector(
+        f'{VNG_SELECTORS["btn_login"]}:not([disabled])',
+        state="visible",
+        timeout=10_000,
+    )
+    log("  → Bấm Đăng nhập")
+    page.click(VNG_SELECTORS["btn_login"])
+
+    # Thành công khi URL thoát khỏi trang /login
+    page.wait_for_url(
+        lambda url: "id.vnggames.app/login" not in url,
+        timeout=20_000,
+    )
 
 
 def _login(page: Page, username: str, password: str, log: LogFn) -> None:
@@ -145,7 +212,9 @@ def change_password_for_account(
     Mở context riêng biệt cho mỗi tài khoản để tránh xung đột phiên.
     Trả về ChangeResult với success=True/False và thông báo chi tiết.
     """
-    target_url = url or BASE_URL
+    target_url = (url or BASE_URL).strip()
+    if target_url and not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
     context: BrowserContext | None = None
 
     try:
@@ -227,6 +296,95 @@ def run_batch(
                 # Nghỉ ngắn giữa các tài khoản để tránh bị chặn
                 time.sleep(0.5)
 
+        finally:
+            browser.close()
+
+    return results
+
+
+# ── Đăng nhập một tài khoản VNG ───────────────────────────────────────────
+
+def login_account(
+    browser: Browser,
+    account: Account,
+    url: str = "",
+    log: LogFn = _log_noop,
+) -> ChangeResult:
+    """Mở context riêng, đăng nhập một tài khoản VNG và trả về kết quả.
+
+    Dùng ``account.old_password`` làm mật khẩu đăng nhập hiện tại.
+    """
+    target_url = (url or VNG_LOGIN_URL).strip()
+    if target_url and not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+    context: BrowserContext | None = None
+
+    try:
+        context = browser.new_context(
+            viewport=BROWSER.get("viewport", {"width": 1280, "height": 720}),
+            locale=BROWSER.get("locale", "vi-VN"),
+        )
+        page = context.new_page()
+        page.set_default_timeout(BROWSER.get("timeout", 15_000))
+
+        log(f"▶ [{account.username}] Mở trang đăng nhập...")
+        page.goto(target_url, wait_until="domcontentloaded")
+
+        log(f"▶ [{account.username}] Đang đăng nhập...")
+        _vng_login(page, account.username, account.old_password, log)
+
+        final_url = page.url
+        short_url = final_url[:70] + ("..." if len(final_url) > 70 else "")
+        log(f"✔ [{account.username}] Đăng nhập thành công → {short_url}")
+        return ChangeResult(account.username, True, f"OK → {short_url}")
+
+    except Exception as exc:
+        msg = str(exc).splitlines()[0]
+        log(f"✗ [{account.username}] Lỗi đăng nhập: {msg}")
+        return ChangeResult(account.username, False, msg)
+
+    finally:
+        if context:
+            context.close()
+
+
+def run_login_batch(
+    accounts: list[Account],
+    url: str = "",
+    log: LogFn = _log_noop,
+    on_result: Callable[[int, ChangeResult], None] | None = None,
+    stop_flag: Callable[[], bool] | None = None,
+) -> list[ChangeResult]:
+    """Chạy đăng nhập tuần tự cho toàn bộ danh sách tài khoản.
+
+    Args:
+        accounts:   Danh sách tài khoản (dùng ``old_password`` để login).
+        url:        URL trang đăng nhập (mặc định: VNG_LOGIN_URL).
+        log:        Hàm ghi log được gọi thread-safe từ GUI.
+        on_result:  Callback ``(index, ChangeResult)`` sau mỗi tài khoản.
+        stop_flag:  Hàm trả về ``True`` khi người dùng bấm Dừng.
+    """
+    results: list[ChangeResult] = []
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            channel="chrome",
+            headless=BROWSER.get("headless", False),
+            slow_mo=BROWSER.get("slow_mo", 0),
+        )
+        try:
+            for i, acc in enumerate(accounts):
+                if stop_flag and stop_flag():
+                    log("⚠ Đã dừng theo yêu cầu người dùng.")
+                    break
+
+                result = login_account(browser, acc, url=url, log=log)
+                results.append(result)
+
+                if on_result:
+                    on_result(i, result)
+
+                time.sleep(0.5)
         finally:
             browser.close()
 

@@ -9,7 +9,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from account_loader import Account, load_file, save_file
-from changer import ChangeResult, open_login_page, run_batch
+from changer import (
+    ChangeResult,
+    VNG_LOGIN_URL,
+    open_login_page,
+    run_batch,
+    run_login_batch,
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -372,37 +378,67 @@ class AppView(tk.Tk):
         panel.pack_propagate(False)
         panel.configure(width=400)
 
-        # Title bar
+        # ── Title bar ─────────────────────────────────────────────────────────
         title_row = tk.Frame(panel, bg=_P["panel"])
         title_row.pack(fill="x")
         tk.Label(title_row, text="DANH SÁCH TÀI KHOẢN",
                  bg=_P["panel"], fg=_P["dim"],
                  font=("Segoe UI", 7, "bold"),
                  padx=12, pady=8).pack(side="left")
+
         self.lbl_count = tk.Label(title_row, text="0",
                                   bg=_P["accent"], fg="white",
                                   font=("Segoe UI", 8, "bold"),
                                   padx=7, pady=2)
         self.lbl_count.pack(side="right", padx=10, pady=8)
+
+        # Mode toggle (Login / Đổi MK) — between title and count badge
+        mode_strip = tk.Frame(title_row, bg=_P["panel"])
+        mode_strip.pack(side="right", pady=8, padx=(0, 6))
+        self.btn_mode_login = tk.Button(
+            mode_strip, text="🔑 Login",
+            bg=_P["accent"], fg="white",
+            activebackground=_dk(_P["accent"], 0.75), activeforeground="white",
+            relief="flat", cursor="hand2", bd=0,
+            font=("Segoe UI", 7, "bold"), padx=8, pady=3,
+        )
+        self.btn_mode_login.pack(side="left", padx=(0, 2))
+        self.btn_mode_chpw = tk.Button(
+            mode_strip, text="🔄 Đổi MK",
+            bg=_P["dim"], fg="white",
+            activebackground=_dk(_P["dim"], 0.75), activeforeground="white",
+            relief="flat", cursor="hand2", bd=0,
+            font=("Segoe UI", 7, "bold"), padx=8, pady=3,
+        )
+        self.btn_mode_chpw.pack(side="left")
+
         self._divider(panel, (0, 0))
 
-        # Add / Edit form
+        # ── Add / Edit form ───────────────────────────────────────────────────
         form = tk.Frame(panel, bg=_P["panel"])
         form.pack(fill="x", padx=12, pady=(10, 0))
 
-        def _field(lbl: str, ph: str, mask: str = "") -> tk.Entry:
+        def _field(lbl_text: str, ph: str, mask: str = "") -> tuple:
             row = tk.Frame(form, bg=_P["panel"])
             row.pack(fill="x", pady=(0, 5))
-            tk.Label(row, text=lbl,
-                     bg=_P["panel"], fg=_P["muted"],
-                     font=("Segoe UI", 8), width=13, anchor="w").pack(side="left")
+            lbl = tk.Label(row, text=lbl_text,
+                           bg=_P["panel"], fg=_P["muted"],
+                           font=("Segoe UI", 8), width=13, anchor="w")
+            lbl.pack(side="left")
             e = self._entry(row, ph, mask=mask, width=22)
             e.pack(side="left", fill="x", expand=True, ipady=5, ipadx=4)
-            return e
+            return row, lbl, e
 
-        self.e_user   = _field("Tài khoản",    "username")
-        self.e_old_pw = _field("Mật khẩu cũ",  "old password", mask="*")
-        self.e_new_pw = _field("Mật khẩu mới", "new password", mask="*")
+        _, _, self.e_user = _field("Tài khoản", "username")
+        self.row_old_pw, self.lbl_old_pw, self.e_old_pw = _field(
+            "Mật khẩu", "password", mask="*")
+        self.row_new_pw, _, self.e_new_pw = _field(
+            "Mật khẩu mới", "new password", mask="*")
+
+        # Initial mode = login → hide new_pw row
+        self._mode: str = "login"
+        self._old_pw_ph: str = "password"
+        self.row_new_pw.pack_forget()
 
         btn_row = tk.Frame(panel, bg=_P["panel"])
         btn_row.pack(fill="x", padx=12, pady=(4, 10))
@@ -414,21 +450,21 @@ class AppView(tk.Tk):
 
         self._divider(panel, (0, 0))
 
-        # Treeview
+        # ── Treeview ──────────────────────────────────────────────────────────
         tv_wrap = tk.Frame(panel, bg=_P["panel"])
         tv_wrap.pack(fill="both", expand=True, padx=4, pady=4)
 
         cols = ("username", "old_password", "new_password", "status")
         self.tree = ttk.Treeview(tv_wrap, columns=cols,
                                  show="headings", selectmode="extended")
-        for col, text, w in [
-            ("username",     "Tài khoản",    140),
-            ("old_password", "Mật khẩu cũ",  100),
-            ("new_password", "Mật khẩu mới", 100),
-            ("status",       "Trạng thái",    70),
+        for col, text, w, mw in [
+            ("username",     "Tài khoản",    155, 50),
+            ("old_password", "Mật khẩu",     145, 50),
+            ("new_password", "Mật khẩu mới",   0,  0),   # hidden in login mode
+            ("status",       "Trạng thái",    70, 50),
         ]:
             self.tree.heading(col, text=text)
-            self.tree.column(col, width=w, minwidth=50, anchor="w")
+            self.tree.column(col, width=w, minwidth=mw, anchor="w")
 
         sb_tv = ttk.Scrollbar(tv_wrap, orient="vertical",
                               command=self.tree.yview)
@@ -436,7 +472,7 @@ class AppView(tk.Tk):
         self.tree.pack(side="left", fill="both", expand=True)
         sb_tv.pack(side="left", fill="y")
 
-        # Bottom row
+        # ── Bottom row ────────────────────────────────────────────────────────
         self._divider(panel, (0, 0))
         bot = tk.Frame(panel, bg=_P["panel"])
         bot.pack(fill="x", padx=12, pady=6)
@@ -501,18 +537,59 @@ class AppView(tk.Tk):
 
     def get_url(self)    -> str: return self._val(self.e_url,   "https://example.com/login")
     def get_user(self)   -> str: return self._val(self.e_user,  "username")
-    def get_old_pw(self) -> str: return self._val(self.e_old_pw, "old password")
+    def get_old_pw(self) -> str: return self._val(self.e_old_pw, self._old_pw_ph)
     def get_new_pw(self) -> str: return self._val(self.e_new_pw, "new password")
+    def get_mode(self)   -> str: return self._mode
+
+    def set_mode(self, mode: str) -> None:
+        """Chuyển chế độ: 'login' hoặc 'change_pw'."""
+        prev_ph   = self._old_pw_ph
+        self._mode = mode
+
+        if mode == "login":
+            self._old_pw_ph = "password"
+            self.lbl_old_pw.config(text="Mật khẩu")
+            self.row_new_pw.pack_forget()
+            self.tree.column("old_password", width=145)
+            self.tree.heading("old_password", text="Mật khẩu")
+            self.tree.column("new_password", width=0, minwidth=0)
+            self._mode_btn_state(self.btn_mode_login, True)
+            self._mode_btn_state(self.btn_mode_chpw,  False)
+        else:
+            self._old_pw_ph = "old password"
+            self.lbl_old_pw.config(text="Mật khẩu cũ")
+            self.row_new_pw.pack(fill="x", pady=(0, 5), after=self.row_old_pw)
+            self.tree.column("old_password", width=100)
+            self.tree.heading("old_password", text="Mật khẩu cũ")
+            self.tree.column("new_password", width=100, minwidth=50)
+            self._mode_btn_state(self.btn_mode_login, False)
+            self._mode_btn_state(self.btn_mode_chpw,  True)
+
+        # Reset old_pw field placeholder if it still shows the old placeholder
+        if self.e_old_pw.get() == prev_ph:
+            self.e_old_pw.config(fg=_P["muted"], show="")
+            self.e_old_pw.delete(0, "end")
+            self.e_old_pw.insert(0, self._old_pw_ph)
+
+    def _mode_btn_state(self, btn: tk.Button, active: bool) -> None:
+        bg  = _P["accent"] if active else _P["dim"]
+        hov = _dk(bg, 0.75)
+        btn.config(bg=bg, activebackground=hov)
+        btn.bind("<Enter>", lambda _: btn.config(bg=hov))
+        btn.bind("<Leave>", lambda _: btn.config(bg=bg))
 
     def clear_add_form(self) -> None:
         for e, ph, mask in (
-            (self.e_user,   "username",     ""),
-            (self.e_old_pw, "old password", "*"),
-            (self.e_new_pw, "new password", "*"),
+            (self.e_user,   "username",        ""),
+            (self.e_old_pw, self._old_pw_ph,   "*"),
         ):
             e.config(fg=_P["muted"], show="")
             e.delete(0, "end")
             e.insert(0, ph)
+        if self._mode == "change_pw":
+            self.e_new_pw.config(fg=_P["muted"], show="")
+            self.e_new_pw.delete(0, "end")
+            self.e_new_pw.insert(0, "new password")
 
     # ── Treeview helpers ──────────────────────────────────────────────────────
     def tree_append(self, acc: Account) -> str:
@@ -520,7 +597,7 @@ class AppView(tk.Tk):
             "", "end",
             values=(acc.username,
                     "•" * len(acc.old_password),
-                    "•" * len(acc.new_password),
+                    "•" * len(acc.new_password) if acc.new_password else "",
                     acc.status),
             tags=(acc.status,),
         )
@@ -605,20 +682,31 @@ class AppController:
         v.btn_run.config(command=self._on_run)
         v.btn_stop.config(command=self._on_stop)
         v.btn_clear_log.config(command=v.log_clear)
+        v.btn_mode_login.config(command=lambda: self._on_set_mode("login"))
+        v.btn_mode_chpw.config(command=lambda: self._on_set_mode("change_pw"))
+
+    def _on_set_mode(self, mode: str) -> None:
+        if mode == self.view.get_mode():
+            return
+        self.view.set_mode(mode)
+        label = "Đăng nhập" if mode == "login" else "Đổi mật khẩu"
+        self.view.log(f"✔ Chế độ: {label}")
 
     # ── Thêm / Sửa / Xóa tài khoản ───────────────────────────────────────────
     def _on_add(self) -> None:
+        mode   = self.view.get_mode()
         user   = self.view.get_user()
         old_pw = self.view.get_old_pw()
-        new_pw = self.view.get_new_pw()
+        new_pw = self.view.get_new_pw() if mode == "change_pw" else ""
 
         if not user:
             messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập tên tài khoản.")
             return
         if not old_pw:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu cũ.")
+            label = "mật khẩu" if mode == "login" else "mật khẩu cũ"
+            messagebox.showwarning("Thiếu thông tin", f"Vui lòng nhập {label}.")
             return
-        if not new_pw:
+        if mode == "change_pw" and not new_pw:
             messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
             return
 
@@ -638,16 +726,19 @@ class AppController:
         if not acc:
             return
 
+        mode   = self.view.get_mode()
         user   = self.view.get_user()   or acc.username
         old_pw = self.view.get_old_pw() or acc.old_password
-        new_pw = self.view.get_new_pw() or acc.new_password
+        new_pw = (self.view.get_new_pw() or acc.new_password) if mode == "change_pw" else acc.new_password
 
-        acc.username = user; acc.old_password = old_pw
-        acc.new_password = new_pw; acc.status = "-"
+        acc.username     = user
+        acc.old_password = old_pw
+        acc.new_password = new_pw
+        acc.status       = "-"
 
         self.view.tree.set(iid, "username",     user)
         self.view.tree.set(iid, "old_password", "•" * len(old_pw))
-        self.view.tree.set(iid, "new_password", "•" * len(new_pw))
+        self.view.tree.set(iid, "new_password", "•" * len(new_pw) if new_pw else "")
         self.view.tree.set(iid, "status",       "-")
         self.view.tree.item(iid, tags=("-",))
         self.view.clear_add_form()
@@ -714,18 +805,66 @@ class AppController:
         if self.model.running:
             return
 
+        # Lấy danh sách tài khoản theo thứ tự hiển thị trên cây
+        iid_accounts = [
+            (iid, self._iid_map[iid])
+            for iid in self.view.tree.get_children()
+            if iid in self._iid_map
+        ]
+        if not iid_accounts:
+            messagebox.showwarning("Trống", "Chưa có tài khoản nào trong danh sách.")
+            return
+
+        accounts = [acc for _, acc in iid_accounts]
+        iid_list  = [iid for iid, _ in iid_accounts]
+        total     = len(accounts)
+
+        raw_url = self.view.get_url().strip()
+        if raw_url and not raw_url.startswith(("http://", "https://")):
+            raw_url = "https://" + raw_url
+        url = raw_url or VNG_LOGIN_URL
+
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.set_status("● Đang chạy...")
+        self.view.set_status(f"● Đang chạy... (0 / {total})")
+        self.view.set_progress(0, total)
+
+        def _on_result(idx: int, result: ChangeResult) -> None:
+            status = "ok" if result.success else "fail"
+            iid = iid_list[idx] if idx < len(iid_list) else None
+            if iid:
+                self.view.after(0, self.view.tree_update_status, iid, status)
+                acc = self._iid_map.get(iid)
+                if acc:
+                    acc.status = status
+            self.view.set_progress(idx + 1, total)
+            self.view.set_status(
+                f"● Đang chạy... ({idx + 1} / {total})"
+                if idx + 1 < total else f"● Hoàn tất ({total} / {total})"
+            )
+
+        mode = self.view.get_mode()
 
         def _worker() -> None:
             try:
-                open_login_page(
-                    stop_flag=self.model.stop_requested,
-                    log=self.view.log,
-                )
+                if mode == "login":
+                    run_login_batch(
+                        accounts=accounts,
+                        url=url,
+                        log=self.view.log,
+                        on_result=_on_result,
+                        stop_flag=self.model.stop_requested,
+                    )
+                else:
+                    run_batch(
+                        accounts=accounts,
+                        url=url,
+                        log=self.view.log,
+                        on_result=_on_result,
+                        stop_flag=self.model.stop_requested,
+                    )
             except Exception as exc:
-                self.view.log(f"✗ Lỗi: {exc}")
+                self.view.log(f"✗ Lỗi nghiêm trọng: {exc}")
             finally:
                 self.model.running = False
                 self.view.after(0, lambda: self.view.btn_run.config(state="normal"))
