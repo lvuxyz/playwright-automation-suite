@@ -338,7 +338,11 @@ def run_batch(
                 time.sleep(0.5)
 
         finally:
-            browser.close()
+            try:
+                browser.close()
+            except Exception:
+                pass
+            time.sleep(0.3)  # drain pending Playwright events before pipe closes
 
     return results
 
@@ -493,7 +497,8 @@ def run_login_batch(
         finally:
             for b, ctx in open_browsers:
                 try:
-                    ctx.close()
+                    if b.is_connected():
+                        ctx.close()
                 except Exception:
                     pass
                 try:
@@ -501,6 +506,7 @@ def run_login_batch(
                         b.close()
                 except Exception:
                     pass
+            time.sleep(0.3)  # drain pending Playwright events before pipe closes
 
     return results
 
@@ -532,5 +538,9 @@ def open_login_page(
             while not stop_flag() and browser.is_connected():
                 time.sleep(0.5)
         finally:
-            if browser.is_connected():
-                browser.close()
+            try:
+                if browser.is_connected():
+                    browser.close()
+            except Exception:
+                pass
+            time.sleep(0.3)

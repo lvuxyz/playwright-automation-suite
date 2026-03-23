@@ -376,7 +376,7 @@ class AppView(tk.Tk):
                          highlightthickness=1)
         panel.pack(side="left", fill="both", padx=(0, 8))
         panel.pack_propagate(False)
-        panel.configure(width=400)
+        panel.configure(width=420)
 
         # ── Title bar ─────────────────────────────────────────────────────────
         title_row = tk.Frame(panel, bg=_P["panel"])
@@ -385,72 +385,160 @@ class AppView(tk.Tk):
                  bg=_P["panel"], fg=_P["dim"],
                  font=("Segoe UI", 7, "bold"),
                  padx=12, pady=8).pack(side="left")
-
         self.lbl_count = tk.Label(title_row, text="0",
                                   bg=_P["accent"], fg="white",
                                   font=("Segoe UI", 8, "bold"),
                                   padx=7, pady=2)
         self.lbl_count.pack(side="right", padx=10, pady=8)
 
-        # Mode toggle (Login / Đổi MK) — between title and count badge
-        mode_strip = tk.Frame(title_row, bg=_P["panel"])
-        mode_strip.pack(side="right", pady=8, padx=(0, 6))
-        self.btn_mode_login = tk.Button(
-            mode_strip, text="🔑 Login",
-            bg=_P["accent"], fg="white",
-            activebackground=_dk(_P["accent"], 0.75), activeforeground="white",
-            relief="flat", cursor="hand2", bd=0,
-            font=("Segoe UI", 7, "bold"), padx=8, pady=3,
-        )
-        self.btn_mode_login.pack(side="left", padx=(0, 2))
-        self.btn_mode_chpw = tk.Button(
-            mode_strip, text="🔄 Đổi MK",
-            bg=_P["dim"], fg="white",
-            activebackground=_dk(_P["dim"], 0.75), activeforeground="white",
-            relief="flat", cursor="hand2", bd=0,
-            font=("Segoe UI", 7, "bold"), padx=8, pady=3,
-        )
-        self.btn_mode_chpw.pack(side="left")
-
         self._divider(panel, (0, 0))
 
-        # ── Add / Edit form ───────────────────────────────────────────────────
-        form = tk.Frame(panel, bg=_P["panel"])
-        form.pack(fill="x", padx=12, pady=(10, 0))
+        # ── Mode tabs (full-width) ─────────────────────────────────────────────
+        tab_row = tk.Frame(panel, bg=_P["surface"])
+        tab_row.pack(fill="x")
+        self.btn_mode_login = tk.Button(
+            tab_row, text="🔑  Đăng nhập",
+            bg=_P["accent"], fg="white",
+            activebackground=_dk(_P["accent"], 0.82), activeforeground="white",
+            relief="flat", cursor="hand2", bd=0,
+            font=("Segoe UI", 8, "bold"), pady=9,
+        )
+        self.btn_mode_login.pack(side="left", fill="x", expand=True)
+        tk.Frame(tab_row, bg=_P["border"], width=1).pack(side="left", fill="y")
+        self.btn_mode_chpw = tk.Button(
+            tab_row, text="🔄  Đổi mật khẩu",
+            bg=_P["surface"], fg=_P["muted"],
+            activebackground=_P["border"], activeforeground=_P["text"],
+            relief="flat", cursor="hand2", bd=0,
+            font=("Segoe UI", 8, "bold"), pady=9,
+        )
+        self.btn_mode_chpw.pack(side="left", fill="x", expand=True)
+        self._divider(panel, (0, 0))
 
-        def _field(lbl_text: str, ph: str, mask: str = "") -> tuple:
-            row = tk.Frame(form, bg=_P["panel"])
+        # ── Form container — sections swap inside here ─────────────────────────
+        self._form_container = tk.Frame(panel, bg=_P["panel"])
+        self._form_container.pack(fill="x")
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # SECTION A: Đăng nhập (shown when mode == "login")
+        # ═══════════════════════════════════════════════════════════════════════
+        self.frame_login_section = tk.Frame(self._form_container, bg=_P["panel"])
+        self.frame_login_section.pack(fill="x", padx=12, pady=(10, 8))
+
+        def _lfield(lbl_text: str, ph: str, mask: str = "") -> tk.Entry:
+            row = tk.Frame(self.frame_login_section, bg=_P["panel"])
             row.pack(fill="x", pady=(0, 5))
-            lbl = tk.Label(row, text=lbl_text,
-                           bg=_P["panel"], fg=_P["muted"],
-                           font=("Segoe UI", 8), width=13, anchor="w")
-            lbl.pack(side="left")
+            tk.Label(row, text=lbl_text, bg=_P["panel"], fg=_P["muted"],
+                     font=("Segoe UI", 8), width=13, anchor="w").pack(side="left")
             e = self._entry(row, ph, mask=mask, width=22)
             e.pack(side="left", fill="x", expand=True, ipady=5, ipadx=4)
-            return row, lbl, e
+            return e
 
-        _, _, self.e_user = _field("Tài khoản", "username")
-        self.row_old_pw, self.lbl_old_pw, self.e_old_pw = _field(
-            "Mật khẩu", "password", mask="*")
-        self.row_new_pw, _, self.e_new_pw = _field(
-            "Mật khẩu mới", "new password", mask="*")
+        self.e_user   = _lfield("Tài khoản", "username")
+        self.e_old_pw = _lfield("Mật khẩu",  "password", mask="*")
 
-        # Initial mode = login → hide new_pw row
-        self._mode: str = "login"
-        self._old_pw_ph: str = "password"
-        self.row_new_pw.pack_forget()
-
-        btn_row = tk.Frame(panel, bg=_P["panel"])
-        btn_row.pack(fill="x", padx=12, pady=(4, 10))
-        self.btn_add    = self._flat_btn(btn_row, "+ Thêm",  _P["green"])
-        self.btn_edit   = self._flat_btn(btn_row, "✎ Sửa",   _P["orange"])
-        self.btn_delete = self._flat_btn(btn_row, "✕ Xóa",   _P["red"])
+        login_btn_row = tk.Frame(self.frame_login_section, bg=_P["panel"])
+        login_btn_row.pack(fill="x", pady=(4, 0))
+        self.btn_add    = self._flat_btn(login_btn_row, "+ Thêm",  _P["green"])
+        self.btn_edit   = self._flat_btn(login_btn_row, "✎ Sửa",   _P["orange"])
+        self.btn_delete = self._flat_btn(login_btn_row, "✕ Xóa",   _P["red"])
         for b in (self.btn_add, self.btn_edit, self.btn_delete):
             b.pack(side="left", padx=(0, 6))
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # SECTION B: Đổi mật khẩu (shown when mode == "change_pw")
+        # ═══════════════════════════════════════════════════════════════════════
+        self.frame_changepw_section = tk.Frame(self._form_container, bg=_P["panel"])
+        # Not packed initially — swapped in by set_mode()
+
+        # ── B1: Main new-password input ───────────────────────────────────────
+        cp_main = tk.Frame(self.frame_changepw_section, bg=_P["panel"])
+        cp_main.pack(fill="x", padx=12, pady=(10, 6))
+
+        np_row = tk.Frame(cp_main, bg=_P["panel"])
+        np_row.pack(fill="x", pady=(0, 8))
+        tk.Label(np_row, text="Mật khẩu mới",
+                 bg=_P["panel"], fg=_P["muted"],
+                 font=("Segoe UI", 8), width=13, anchor="w").pack(side="left")
+        self.e_new_pw = self._entry(np_row, "nhập mật khẩu mới", mask="*", width=22)
+        self.e_new_pw.pack(side="left", fill="x", expand=True, ipady=5, ipadx=4)
+
+        # ── B2: Apply buttons (dynamic labels) ───────────────────────────────
+        apply_row = tk.Frame(cp_main, bg=_P["panel"])
+        apply_row.pack(fill="x")
+
+        self.btn_apply_selected = self._flat_btn(
+            apply_row, "→ Cho đã chọn (0)", _P["accent"],
+            fnt=("Segoe UI", 8, "bold"))
+        self.btn_apply_selected.pack(side="left", padx=(0, 6))
+
+        self.btn_apply_all = self._flat_btn(
+            apply_row, "→ Tất cả (0)", _P["orange"],
+            fnt=("Segoe UI", 8, "bold"))
+        self.btn_apply_all.pack(side="left")
+
+        # ── B3: Collapsible account-management section ────────────────────────
+        self._manual_open: bool = False
+        cp_toggle_wrap = tk.Frame(self.frame_changepw_section, bg=_P["surface"])
+        cp_toggle_wrap.pack(fill="x", pady=(6, 0))
+        tk.Frame(cp_toggle_wrap, bg=_P["border"], height=1).pack(fill="x")
+
+        self.btn_toggle_manual = tk.Button(
+            cp_toggle_wrap,
+            text="⊕  Quản lý tài khoản",
+            bg=_P["surface"], fg=_P["dim"],
+            activebackground=_P["border"], activeforeground=_P["text"],
+            relief="flat", cursor="hand2", bd=0, anchor="w",
+            font=("Segoe UI", 8), padx=12, pady=6,
+        )
+        self.btn_toggle_manual.pack(fill="x")
+
+        # Collapsible body — not packed initially
+        self.frame_manual_add = tk.Frame(
+            self.frame_changepw_section, bg=_P["surface"],
+            highlightbackground=_P["border"], highlightthickness=1)
+
+        man_inner = tk.Frame(self.frame_manual_add, bg=_P["surface"])
+        man_inner.pack(fill="x", padx=12, pady=(8, 6))
+
+        def _cpfield(lbl_text: str, ph: str, mask: str = "") -> tk.Entry:
+            row = tk.Frame(man_inner, bg=_P["surface"])
+            row.pack(fill="x", pady=(0, 5))
+            tk.Label(row, text=lbl_text, bg=_P["surface"], fg=_P["muted"],
+                     font=("Segoe UI", 8), width=13, anchor="w").pack(side="left")
+            e = self._entry(row, ph, mask=mask, width=22)
+            e.pack(side="left", fill="x", expand=True, ipady=5, ipadx=4)
+            return e
+
+        self.e_user_cp   = _cpfield("Tài khoản",   "username")
+        self.e_old_pw_cp = _cpfield("Mật khẩu cũ", "old password", mask="*")
+
+        tk.Label(man_inner,
+                 text="★  MK mới dùng từ ô \"Mật khẩu mới\" ở trên",
+                 bg=_P["surface"], fg=_P["dim"],
+                 font=("Segoe UI", 7, "italic")).pack(anchor="w", pady=(0, 6))
+
+        man_btn_row = tk.Frame(man_inner, bg=_P["surface"])
+        man_btn_row.pack(fill="x")
+        self.btn_add_cp    = self._flat_btn(man_btn_row, "+ Thêm",         _P["green"])
+        self.btn_edit_cp   = self._flat_btn(man_btn_row, "✎ Sửa",          _P["orange"])
+        self.btn_delete_cp = self._flat_btn(man_btn_row, "✕ Xóa đã chọn", _P["red"])
+        for b in (self.btn_add_cp, self.btn_edit_cp, self.btn_delete_cp):
+            b.pack(side="left", padx=(0, 6))
+
+        # ── Initial state ──────────────────────────────────────────────────────
+        self._mode: str = "login"
+        self._old_pw_ph: str = "password"
 
         self._divider(panel, (0, 0))
 
         # ── Treeview ──────────────────────────────────────────────────────────
+        self._hint_lbl = tk.Label(
+            panel, text="💡 Click vào dòng để tự điền form",
+            bg=_P["panel"], fg=_P["dim"],
+            font=("Segoe UI", 7), anchor="w")
+        self._hint_lbl.pack(fill="x", padx=8, pady=(3, 0))
+
         tv_wrap = tk.Frame(panel, bg=_P["panel"])
         tv_wrap.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -535,61 +623,115 @@ class AppView(tk.Tk):
         v = entry.get()
         return "" if v == placeholder else v
 
-    def get_url(self)    -> str: return self._val(self.e_url,   "https://example.com/login")
-    def get_user(self)   -> str: return self._val(self.e_user,  "username")
-    def get_old_pw(self) -> str: return self._val(self.e_old_pw, self._old_pw_ph)
-    def get_new_pw(self) -> str: return self._val(self.e_new_pw, "new password")
-    def get_mode(self)   -> str: return self._mode
+    def get_url(self)  -> str: return self._val(self.e_url, "https://example.com/login")
+    def get_mode(self) -> str: return self._mode
+
+    def get_user(self) -> str:
+        """Trả về username từ form hiện đang active."""
+        if self._mode == "login":
+            return self._val(self.e_user, "username")
+        return self._val(self.e_user_cp, "username")
+
+    def get_old_pw(self) -> str:
+        """Trả về mật khẩu (cũ) từ form hiện đang active."""
+        if self._mode == "login":
+            return self._val(self.e_old_pw, "password")
+        return self._val(self.e_old_pw_cp, "old password")
+
+    def get_new_pw(self) -> str:
+        return self._val(self.e_new_pw, "nhập mật khẩu mới")
 
     def set_mode(self, mode: str) -> None:
         """Chuyển chế độ: 'login' hoặc 'change_pw'."""
-        prev_ph   = self._old_pw_ph
         self._mode = mode
-
         if mode == "login":
             self._old_pw_ph = "password"
-            self.lbl_old_pw.config(text="Mật khẩu")
-            self.row_new_pw.pack_forget()
+            self.frame_changepw_section.pack_forget()
+            self.frame_login_section.pack(fill="x", padx=12, pady=(10, 8))
             self.tree.column("old_password", width=145)
             self.tree.heading("old_password", text="Mật khẩu")
             self.tree.column("new_password", width=0, minwidth=0)
+            self._hint_lbl.config(
+                text="💡 Click vào dòng để tự điền form")
             self._mode_btn_state(self.btn_mode_login, True)
             self._mode_btn_state(self.btn_mode_chpw,  False)
         else:
             self._old_pw_ph = "old password"
-            self.lbl_old_pw.config(text="Mật khẩu cũ")
-            self.row_new_pw.pack(fill="x", pady=(0, 5), after=self.row_old_pw)
+            self.frame_login_section.pack_forget()
+            self.frame_changepw_section.pack(fill="x")
             self.tree.column("old_password", width=100)
             self.tree.heading("old_password", text="Mật khẩu cũ")
             self.tree.column("new_password", width=100, minwidth=50)
+            self._hint_lbl.config(
+                text="💡 Chọn tài khoản → tự điền MK mới, rồi nhấn Áp dụng")
             self._mode_btn_state(self.btn_mode_login, False)
             self._mode_btn_state(self.btn_mode_chpw,  True)
-
-        # Reset old_pw field placeholder if it still shows the old placeholder
-        if self.e_old_pw.get() == prev_ph:
-            self.e_old_pw.config(fg=_P["muted"], show="")
-            self.e_old_pw.delete(0, "end")
-            self.e_old_pw.insert(0, self._old_pw_ph)
+            self.update_apply_btn_labels()
 
     def _mode_btn_state(self, btn: tk.Button, active: bool) -> None:
-        bg  = _P["accent"] if active else _P["dim"]
-        hov = _dk(bg, 0.75)
-        btn.config(bg=bg, activebackground=hov)
+        if active:
+            bg, fg = _P["accent"], "white"
+            hov    = _dk(_P["accent"], 0.82)
+        else:
+            bg, fg = _P["surface"], _P["muted"]
+            hov    = _P["border"]
+        btn.config(bg=bg, fg=fg,
+                   activebackground=hov,
+                   activeforeground="white" if active else _P["text"])
         btn.bind("<Enter>", lambda _: btn.config(bg=hov))
         btn.bind("<Leave>", lambda _: btn.config(bg=bg))
 
     def clear_add_form(self) -> None:
-        for e, ph, mask in (
-            (self.e_user,   "username",        ""),
-            (self.e_old_pw, self._old_pw_ph,   "*"),
-        ):
-            e.config(fg=_P["muted"], show="")
-            e.delete(0, "end")
-            e.insert(0, ph)
-        if self._mode == "change_pw":
-            self.e_new_pw.config(fg=_P["muted"], show="")
-            self.e_new_pw.delete(0, "end")
-            self.e_new_pw.insert(0, "new password")
+        """Xóa form sau khi thêm/sửa xong."""
+        if self._mode == "login":
+            for e, ph in ((self.e_user, "username"), (self.e_old_pw, "password")):
+                e.config(fg=_P["muted"], show="")
+                e.delete(0, "end")
+                e.insert(0, ph)
+        else:
+            # Chỉ xóa phần manual-add; giữ nguyên e_new_pw để dễ thêm nhiều tài khoản
+            for e, ph in ((self.e_user_cp, "username"),
+                          (self.e_old_pw_cp, "old password")):
+                e.config(fg=_P["muted"], show="")
+                e.delete(0, "end")
+                e.insert(0, ph)
+
+    def fill_form_from_account(self, username: str, old_password: str,
+                                new_password: str = "") -> None:
+        """Điền sẵn form từ tài khoản được chọn trong danh sách."""
+        if self._mode == "login":
+            self.e_user.config(fg=_P["text"], show="")
+            self.e_user.delete(0, "end")
+            self.e_user.insert(0, username)
+            self.e_old_pw.config(fg=_P["text"], show="*")
+            self.e_old_pw.delete(0, "end")
+            self.e_old_pw.insert(0, old_password)
+        else:
+            # Điền vào e_new_pw (main field) với new_password hiện tại của tài khoản
+            if new_password:
+                self.e_new_pw.config(fg=_P["text"], show="*")
+                self.e_new_pw.delete(0, "end")
+                self.e_new_pw.insert(0, new_password)
+            else:
+                # Giữ nguyên nếu tài khoản chưa có new_password
+                if self.e_new_pw.get() in ("nhập mật khẩu mới", ""):
+                    self.e_new_pw.config(fg=_P["muted"], show="")
+                    self.e_new_pw.delete(0, "end")
+                    self.e_new_pw.insert(0, "nhập mật khẩu mới")
+            # Điền vào manual section (cho trường hợp cần sửa username/old_pw)
+            self.e_user_cp.config(fg=_P["text"], show="")
+            self.e_user_cp.delete(0, "end")
+            self.e_user_cp.insert(0, username)
+            self.e_old_pw_cp.config(fg=_P["text"], show="*")
+            self.e_old_pw_cp.delete(0, "end")
+            self.e_old_pw_cp.insert(0, old_password)
+
+    def update_apply_btn_labels(self) -> None:
+        """Cập nhật số đếm trên nút Áp dụng khi selection hoặc danh sách thay đổi."""
+        sel   = len(self.tree.selection())
+        total = self.tree_count()
+        self.btn_apply_selected.config(text=f"→ Cho đã chọn ({sel})")
+        self.btn_apply_all.config(text=f"→ Tất cả ({total})")
 
     # ── Treeview helpers ──────────────────────────────────────────────────────
     def tree_append(self, acc: Account) -> str:
@@ -604,6 +746,8 @@ class AppView(tk.Tk):
         for tag, color in _STATUS_COLORS.items():
             self.tree.tag_configure(tag, foreground=color)
         self.lbl_count.config(text=str(self.tree_count()))
+        if self._mode == "change_pw":
+            self.update_apply_btn_labels()
         return iid
 
     def tree_update_status(self, iid: str, status: str) -> None:
@@ -618,10 +762,14 @@ class AppView(tk.Tk):
         for iid in self.tree.selection():
             self.tree.delete(iid)
         self.lbl_count.config(text=str(self.tree_count()))
+        if self._mode == "change_pw":
+            self.update_apply_btn_labels()
 
     def tree_clear(self) -> None:
         self.tree.delete(*self.tree.get_children())
         self.lbl_count.config(text="0")
+        if self._mode == "change_pw":
+            self.update_apply_btn_labels()
 
     def tree_count(self) -> int:
         return len(self.tree.get_children())
@@ -673,9 +821,18 @@ class AppController:
 
     def _bind(self) -> None:
         v = self.view
+        # Login section
         v.btn_add.config(command=self._on_add)
         v.btn_edit.config(command=self._on_edit)
         v.btn_delete.config(command=self._on_delete)
+        # Change-PW section
+        v.btn_apply_selected.config(command=self._on_apply_to_selected)
+        v.btn_apply_all.config(command=self._on_apply_pw_all)
+        v.btn_toggle_manual.config(command=self._on_toggle_manual)
+        v.btn_add_cp.config(command=self._on_add)
+        v.btn_edit_cp.config(command=self._on_edit)
+        v.btn_delete_cp.config(command=self._on_delete)
+        # Shared
         v.btn_clear.config(command=self._on_clear_list)
         v.btn_import.config(command=self._on_import)
         v.btn_export.config(command=self._on_export)
@@ -684,6 +841,7 @@ class AppController:
         v.btn_clear_log.config(command=v.log_clear)
         v.btn_mode_login.config(command=lambda: self._on_set_mode("login"))
         v.btn_mode_chpw.config(command=lambda: self._on_set_mode("change_pw"))
+        v.tree.bind("<<TreeviewSelect>>", lambda _e: self._on_tree_select())
 
     def _on_set_mode(self, mode: str) -> None:
         if mode == self.view.get_mode():
@@ -877,6 +1035,64 @@ class AppController:
             self.model.running = False
             self.view.log("⚠ Yêu cầu dừng...")
             self.view.set_status("● Đang dừng...")
+
+    # ── Tree selection → auto-fill form ───────────────────────────────────────
+    def _on_tree_select(self) -> None:
+        """Click vào dòng: điền form + cập nhật số đếm nút áp dụng."""
+        iid = self.view.tree_selected_iid()
+        if not iid:
+            return
+        acc = self._iid_map.get(iid)
+        if not acc:
+            return
+        self.view.fill_form_from_account(
+            acc.username, acc.old_password, acc.new_password)
+        if self.view.get_mode() == "change_pw":
+            self.view.update_apply_btn_labels()
+
+    # ── Toggle manual-add section ─────────────────────────────────────────────
+    def _on_toggle_manual(self) -> None:
+        v = self.view
+        v._manual_open = not v._manual_open
+        if v._manual_open:
+            v.frame_manual_add.pack(fill="x", padx=12, pady=(0, 8))
+            v.btn_toggle_manual.config(text="⊖  Quản lý tài khoản  ▾")
+        else:
+            v.frame_manual_add.pack_forget()
+            v.btn_toggle_manual.config(text="⊕  Quản lý tài khoản")
+
+    # ── Áp dụng mật khẩu mới cho tài khoản đã chọn ───────────────────────────
+    def _on_apply_to_selected(self) -> None:
+        new_pw = self.view.get_new_pw()
+        if not new_pw:
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
+            return
+        selected = self.view.tree.selection()
+        if not selected:
+            messagebox.showinfo("Chưa chọn",
+                                "Vui lòng chọn ít nhất một tài khoản trong danh sách.")
+            return
+        for iid in selected:
+            acc = self._iid_map.get(iid)
+            if acc:
+                acc.new_password = new_pw
+                self.view.tree.set(iid, "new_password", "•" * len(new_pw))
+        self.view.log(
+            f"✔ Đã đặt mật khẩu mới cho {len(selected)} tài khoản đã chọn")
+
+    # ── Áp dụng mật khẩu mới cho TẤT CẢ tài khoản ───────────────────────────
+    def _on_apply_pw_all(self) -> None:
+        new_pw = self.view.get_new_pw()
+        if not new_pw:
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
+            return
+        if not self._iid_map:
+            messagebox.showinfo("Trống", "Chưa có tài khoản nào trong danh sách.")
+            return
+        for iid, acc in self._iid_map.items():
+            acc.new_password = new_pw
+            self.view.tree.set(iid, "new_password", "•" * len(new_pw))
+        self.view.log(f"✔ Đã đặt mật khẩu mới cho {len(self._iid_map)} tài khoản")
 
     def run(self) -> None:
         self.view.mainloop()
