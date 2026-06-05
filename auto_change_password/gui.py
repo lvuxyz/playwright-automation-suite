@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from account_loader import Account, load_file, save_changed_txt
 from changer import (
     VNG_ACCOUNT_URL,
-    open_myaccount_page,
+    run_login_batch,
 )
 
 URL_PLACEHOLDER = VNG_ACCOUNT_URL
@@ -334,7 +334,7 @@ class AppView(tk.Tk):
         row1 = tk.Frame(right, bg=_P["panel"])
         row1.pack(anchor="e", pady=(0, 6))
 
-        self.btn_run = self._flat_btn(row1, "▶  Mở myaccount", _P["green"])
+        self.btn_run = self._flat_btn(row1, "▶  Đăng nhập", _P["green"])
         self.btn_run.pack(side="left", padx=(0, 6))
 
         self.btn_stop = self._flat_btn(row1, "■  Dừng", _P["red"])
@@ -613,7 +613,7 @@ class AppView(tk.Tk):
         sb = tk.Frame(self, bg=_P["panel"])
         sb.pack(fill="x", side="bottom")
         self.status_var = tk.StringVar(
-            value="● Sẵn sàng - bước 1: mở myaccount.vnggames.com"
+            value="● Sẵn sàng - đăng nhập myaccount.vnggames.com"
         )
         tk.Label(sb, textvariable=self.status_var,
                  bg=_P["panel"], fg=_P["muted"],
@@ -982,19 +982,59 @@ class AppController:
         if raw_url and not raw_url.startswith(("http://", "https://")):
             raw_url = "https://" + raw_url
         url = raw_url or VNG_ACCOUNT_URL
-        total = len(self.model.accounts)
+
+        accounts = list(self.model.accounts)
+        iid_by_account_id = {id(acc): iid for iid, acc in self._iid_map.items()}
+        run_iids: list[str | None] = [iid_by_account_id.get(id(acc)) for acc in accounts]
+
+        if not accounts:
+            user = self.view.get_user().strip()
+            old_pw = self.view.get_old_pw()
+            if not user or not old_pw:
+                messagebox.showwarning(
+                    "Thiếu thông tin",
+                    "Vui lòng thêm/import account hoặc nhập tài khoản và mật khẩu.",
+                )
+                return
+            accounts = [Account(username=user, old_password=old_pw, new_password="")]
+            run_iids = [None]
+
+        total = len(accounts)
+        for iid in run_iids:
+            if iid:
+                self.view.tree_update_status(iid, "-")
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.log("▶ Bước 1: mở My Account VNG, chưa tự động bấm tiếp.")
-        self.view.set_status("● Đang mở myaccount.vnggames.com...")
+        self.view.log("▶ Mở My Account VNG và tự động đăng nhập...")
+        self.view.set_status("● Đang đăng nhập VNG...")
         self.view.set_progress(0, total)
+
+        def _on_result(index, result) -> None:
+            status = "ok" if result.success else "fail"
+            account = accounts[index]
+            account.status = status
+            account.note = result.message
+
+            iid = run_iids[index]
+            if iid:
+                self.view.after(
+                    0,
+                    lambda iid=iid, status=status: self.view.tree_update_status(iid, status),
+                )
+
+            done = index + 1
+            self.view.set_progress(done, total)
+            if done == total:
+                self.view.set_status("● Đăng nhập xong - bấm Dừng để đóng Chrome")
 
         def _worker() -> None:
             try:
-                open_myaccount_page(
+                run_login_batch(
+                    accounts=accounts,
                     url=url,
                     log=self.view.log,
+                    on_result=_on_result,
                     stop_flag=self.model.stop_requested,
                 )
             except Exception as exc:
@@ -1002,7 +1042,7 @@ class AppController:
             finally:
                 self.model.running = False
                 self.view.after(0, lambda: self.view.btn_run.config(state="normal"))
-                self.view.set_status("● Sẵn sàng - auto đã dừng ở bước mở trang")
+                self.view.set_status("● Sẵn sàng")
 
         threading.Thread(target=_worker, daemon=True).start()
 
