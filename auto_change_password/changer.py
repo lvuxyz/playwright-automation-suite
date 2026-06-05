@@ -20,6 +20,8 @@ from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from account_loader import Account
 
+VNG_ACCOUNT_URL = "https://myaccount.vnggames.com"
+
 VNG_LOGIN_URL = (
     "https://id.vnggames.app/login"
     "?back=https%3A%2F%2Fsso.vnggames.com%2Fsso%2Fbridge%2Fcallback"
@@ -509,6 +511,43 @@ def run_login_batch(
             time.sleep(0.3)  # drain pending Playwright events before pipe closes
 
     return results
+
+
+# ── Mở trang My Account VNG (bước khởi động GUI mới) ─────────────────────
+
+def open_myaccount_page(
+    url: str = "",
+    stop_flag: Callable[[], bool] = lambda: False,
+    log: LogFn = _log_noop,
+) -> None:
+    """Mở Chrome đến trang My Account VNG và dừng automation tại đó."""
+    target_url = (url or VNG_ACCOUNT_URL).strip()
+    if target_url and not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+
+    log(f"▶ Đang mở trình duyệt → {target_url}")
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=False,
+            slow_mo=BROWSER.get("slow_mo", 0),
+        )
+        try:
+            page = browser.new_page(
+                viewport=BROWSER.get("viewport", {"width": 1280, "height": 720}),
+                locale=BROWSER.get("locale", "vi-VN"),
+            )
+            page.goto(target_url, wait_until="domcontentloaded")
+            log("✔ Đã mở My Account VNG. Auto dừng tại bước mở trang.")
+
+            while not stop_flag() and browser.is_connected():
+                time.sleep(0.5)
+        finally:
+            try:
+                if browser.is_connected():
+                    browser.close()
+            except Exception:
+                pass
+            time.sleep(0.3)
 
 
 # ── Mở Chrome đến trang đăng nhập (bước khởi động) ────────────────────────
