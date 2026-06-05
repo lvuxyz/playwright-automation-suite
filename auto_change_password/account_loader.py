@@ -196,10 +196,32 @@ def save_excel(accounts: Iterable[Account], path: str | Path) -> None:
     wb.save(path)
 
 
+def save_txt(accounts: Iterable[Account], path: str | Path) -> None:
+    """Lưu danh sách tài khoản ra TXT theo dạng username|old_password|new_password."""
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        for acc in accounts:
+            parts = [acc.username, acc.old_password]
+            if acc.new_password:
+                parts.append(acc.new_password)
+            f.write("|".join(parts) + "\n")
+
+
+def save_changed_txt(accounts: Iterable[Account], path: str | Path) -> int:
+    """Lưu account đã đổi thành công theo dạng username|new_password."""
+    changed = [acc for acc in accounts if acc.status == "ok"]
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        for acc in changed:
+            password = acc.new_password or acc.old_password
+            f.write(f"{acc.username}|{password}\n")
+    return len(changed)
+
+
 def save_file(accounts: Iterable[Account], path: str | Path) -> None:
     """Tự động chọn định dạng dựa theo đuôi file."""
     ext = Path(path).suffix.lower()
     if ext in (".xlsx", ".xls"):
         save_excel(accounts, path)
+    elif ext == ".txt":
+        save_txt(accounts, path)
     else:
         save_csv(accounts, path)
