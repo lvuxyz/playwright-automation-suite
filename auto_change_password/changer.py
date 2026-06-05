@@ -53,6 +53,7 @@ VNG_ACCOUNT_SELECTORS = {
         'text=Bảo mật',
     ],
     "password_update": [
+        'button[data-id="button-update"]',
         'xpath=//*[normalize-space()="Mật khẩu hiện tại"]'
         '/ancestor::div[.//*[normalize-space()="Cập nhật"]][1]'
         '//*[normalize-space()="Cập nhật"]',
@@ -600,7 +601,7 @@ def login_and_hold_account(
     stop_flag: Callable[[], bool] | None = None,
     on_result: Callable[[ChangeResult], None] | None = None,
 ) -> ChangeResult:
-    """Đăng nhập 1 account, bấm Bảo mật rồi giữ Chrome mở để kiểm tra."""
+    """Đăng nhập 1 account, bấm Bảo mật và Cập nhật rồi giữ Chrome mở."""
     target_url = (url or VNG_ACCOUNT_URL).strip()
     if target_url and not target_url.startswith(("http://", "https://")):
         target_url = "https://" + target_url
@@ -630,10 +631,13 @@ def login_and_hold_account(
             log(f"▶ [{account.username}] Bấm menu Bảo mật...")
             _open_security_page(page, log)
 
+            log(f"▶ [{account.username}] Bấm Cập nhật mật khẩu...")
+            _open_change_password_modal(page, log)
+
             final_url = page.url
             short_url = final_url[:70] + ("..." if len(final_url) > 70 else "")
-            result = ChangeResult(account.username, True, f"Đã mở Bảo mật → {short_url}")
-            log(f"✔ [{account.username}] Đã mở Bảo mật → dừng để kiểm tra")
+            result = ChangeResult(account.username, True, f"Đã mở form cập nhật → {short_url}")
+            log(f"✔ [{account.username}] Đã mở form cập nhật mật khẩu → dừng để kiểm tra")
             if on_result:
                 on_result(result)
 
@@ -643,7 +647,7 @@ def login_and_hold_account(
         except Exception as exc:
             msg = str(exc).splitlines()[0]
             result = ChangeResult(account.username, False, msg)
-            log(f"✗ [{account.username}] Lỗi mở Bảo mật: {msg}")
+            log(f"✗ [{account.username}] Lỗi mở form cập nhật: {msg}")
             if on_result:
                 on_result(result)
 

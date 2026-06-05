@@ -1011,8 +1011,8 @@ class AppController:
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.log("▶ Mở My Account VNG, bấm Bảo mật rồi dừng...")
-        self.view.set_status("● Đang đăng nhập và mở trang Bảo mật...")
+        self.view.log("▶ Mở My Account VNG, bấm Bảo mật và Cập nhật rồi dừng...")
+        self.view.set_status("● Đang mở form cập nhật mật khẩu...")
         self.view.set_progress(0, 1)
 
         def _on_result(result) -> None:
@@ -1028,9 +1028,9 @@ class AppController:
 
             self.view.set_progress(1, 1)
             if result.success:
-                self.view.set_status("● Đã mở Bảo mật - dừng để kiểm tra")
+                self.view.set_status("● Đã mở form cập nhật - dừng để kiểm tra")
             else:
-                self.view.set_status("● Mở Bảo mật thất bại")
+                self.view.set_status("● Mở form cập nhật thất bại")
 
         def _worker() -> None:
             try:
