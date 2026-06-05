@@ -1006,13 +1006,26 @@ class AppController:
             account = Account(username=user, old_password=old_pw, new_password="")
             run_iid = None
 
+        form_new_pw = self.view.get_new_pw()
+        if not account.new_password and form_new_pw:
+            account.new_password = form_new_pw
+            if run_iid:
+                self.view.tree.set(run_iid, "new_password", "•" * len(form_new_pw))
+
+        if not account.new_password:
+            messagebox.showwarning(
+                "Thiếu mật khẩu mới",
+                "Vui lòng cập nhật mật khẩu mới trong danh sách trước khi chạy.",
+            )
+            return
+
         if run_iid:
             self.view.tree_update_status(run_iid, "-")
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.log("▶ Mở My Account VNG, bấm Bảo mật và Cập nhật rồi dừng...")
-        self.view.set_status("● Đang mở form cập nhật mật khẩu...")
+        self.view.log("▶ Mở My Account VNG, đổi mật khẩu 1 account rồi dừng...")
+        self.view.set_status("● Đang điền và cập nhật mật khẩu...")
         self.view.set_progress(0, 1)
 
         def _on_result(result) -> None:
@@ -1028,9 +1041,9 @@ class AppController:
 
             self.view.set_progress(1, 1)
             if result.success:
-                self.view.set_status("● Đã mở form cập nhật - dừng để kiểm tra")
+                self.view.set_status("● Đã bấm cập nhật đổi mật khẩu - dừng để kiểm tra")
             else:
-                self.view.set_status("● Mở form cập nhật thất bại")
+                self.view.set_status("● Đổi mật khẩu thất bại")
 
         def _worker() -> None:
             try:
