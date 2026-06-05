@@ -1,4 +1,4 @@
-"""Auto Change Password — Giao diện tkinter hiện đại."""
+"""VNG Password Changer — giao diện tkinter."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from account_loader import Account, load_file, save_file
+from account_loader import Account, load_file, save_changed_txt
 from changer import (
-    ChangeResult,
-    VNG_LOGIN_URL,
-    open_login_page,
-    run_batch,
-    run_login_batch,
+    VNG_ACCOUNT_URL,
+    open_myaccount_page,
 )
+
+URL_PLACEHOLDER = VNG_ACCOUNT_URL
+NEW_PW_PLACEHOLDER = "mật khẩu mới cần đổi"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -172,7 +172,7 @@ class AppView(tk.Tk):
     # ── Khởi tạo ──────────────────────────────────────────────────────────────
     def __init__(self) -> None:
         super().__init__()
-        self.title("Auto Change Password")
+        self.title("VNG Password Changer")
         self.minsize(920, 600)
         self.configure(bg=_P["bg"])
         self._setup_styles()
@@ -290,10 +290,10 @@ class AppView(tk.Tk):
 
         left = tk.Frame(hdr, bg=_P["panel"])
         left.pack(side="left", padx=16, pady=10)
-        tk.Label(left, text="🔑  Auto Change Password",
+        tk.Label(left, text="🔑  VNG Password Changer",
                  bg=_P["panel"], fg=_P["text"],
                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        tk.Label(left, text="Tự động đổi mật khẩu hàng loạt tài khoản web",
+        tk.Label(left, text="myaccount.vnggames.com - đổi mật khẩu hàng loạt",
                  bg=_P["panel"], fg=_P["muted"],
                  font=("Segoe UI", 8)).pack(anchor="w")
 
@@ -315,7 +315,7 @@ class AppView(tk.Tk):
         left = tk.Frame(card, bg=_P["panel"])
         left.pack(side="left", fill="x", expand=True, padx=14, pady=12)
 
-        tk.Label(left, text="URL TRANG WEB",
+        tk.Label(left, text="TRANG TÀI KHOẢN VNG",
                  bg=_P["panel"], fg=_P["dim"],
                  font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 5))
 
@@ -324,7 +324,7 @@ class AppView(tk.Tk):
         tk.Label(url_row, text="🔗",
                  bg=_P["panel"], fg=_P["muted"],
                  font=("Segoe UI", 11)).pack(side="left", padx=(0, 6))
-        self.e_url = self._entry(url_row, "https://example.com/login", width=42)
+        self.e_url = self._entry(url_row, URL_PLACEHOLDER, width=42)
         self.e_url.pack(side="left", fill="x", expand=True, ipady=7, ipadx=6)
 
         # ── Right: Action buttons ─────────────────────────────────────────────
@@ -334,20 +334,20 @@ class AppView(tk.Tk):
         row1 = tk.Frame(right, bg=_P["panel"])
         row1.pack(anchor="e", pady=(0, 6))
 
-        self.btn_run = self._flat_btn(row1, "▶  Chạy auto", _P["green"])
+        self.btn_run = self._flat_btn(row1, "▶  Mở myaccount", _P["green"])
         self.btn_run.pack(side="left", padx=(0, 6))
 
-        self.btn_stop = self._flat_btn(row1, "■  Tạm dừng", _P["red"])
+        self.btn_stop = self._flat_btn(row1, "■  Dừng", _P["red"])
         self.btn_stop.pack(side="left")
 
         row2 = tk.Frame(right, bg=_P["panel"])
         row2.pack(anchor="e")
 
-        self.btn_import = self._flat_btn(row2, "↑  Nhập account",
+        self.btn_import = self._flat_btn(row2, "↑  Nhập TXT",
                                          fnt=("Segoe UI", 8, "bold"))
         self.btn_import.pack(side="left", padx=(0, 6))
 
-        self.btn_export = self._flat_btn(row2, "↓  Xuất kết quả",
+        self.btn_export = self._flat_btn(row2, "↓  Xuất TXT OK",
                                          fnt=("Segoe UI", 8, "bold"))
         self.btn_export.pack(side="left")
 
@@ -381,7 +381,7 @@ class AppView(tk.Tk):
         # ── Title bar ─────────────────────────────────────────────────────────
         title_row = tk.Frame(panel, bg=_P["panel"])
         title_row.pack(fill="x")
-        tk.Label(title_row, text="DANH SÁCH TÀI KHOẢN",
+        tk.Label(title_row, text="ACCOUNT CẦN ĐỔI MẬT KHẨU",
                  bg=_P["panel"], fg=_P["dim"],
                  font=("Segoe UI", 7, "bold"),
                  padx=12, pady=8).pack(side="left")
@@ -397,7 +397,7 @@ class AppView(tk.Tk):
         tab_row = tk.Frame(panel, bg=_P["surface"])
         tab_row.pack(fill="x")
         self.btn_mode_login = tk.Button(
-            tab_row, text="🔑  Đăng nhập",
+            tab_row, text="➕  Nhập tay",
             bg=_P["accent"], fg="white",
             activebackground=_dk(_P["accent"], 0.82), activeforeground="white",
             relief="flat", cursor="hand2", bd=0,
@@ -420,7 +420,7 @@ class AppView(tk.Tk):
         self._form_container.pack(fill="x")
 
         # ═══════════════════════════════════════════════════════════════════════
-        # SECTION A: Đăng nhập (shown when mode == "login")
+        # SECTION A: Nhập tay account (shown when mode == "login")
         # ═══════════════════════════════════════════════════════════════════════
         self.frame_login_section = tk.Frame(self._form_container, bg=_P["panel"])
         self.frame_login_section.pack(fill="x", padx=12, pady=(10, 8))
@@ -435,7 +435,7 @@ class AppView(tk.Tk):
             return e
 
         self.e_user   = _lfield("Tài khoản", "username")
-        self.e_old_pw = _lfield("Mật khẩu",  "password", mask="*")
+        self.e_old_pw = _lfield("Mật khẩu cũ", "old password", mask="*")
 
         login_btn_row = tk.Frame(self.frame_login_section, bg=_P["panel"])
         login_btn_row.pack(fill="x", pady=(4, 0))
@@ -457,10 +457,10 @@ class AppView(tk.Tk):
 
         np_row = tk.Frame(cp_main, bg=_P["panel"])
         np_row.pack(fill="x", pady=(0, 8))
-        tk.Label(np_row, text="Mật khẩu mới",
+        tk.Label(np_row, text="MK mới chung",
                  bg=_P["panel"], fg=_P["muted"],
                  font=("Segoe UI", 8), width=13, anchor="w").pack(side="left")
-        self.e_new_pw = self._entry(np_row, "nhập mật khẩu mới", mask="*", width=22)
+        self.e_new_pw = self._entry(np_row, NEW_PW_PLACEHOLDER, mask="*", width=22)
         self.e_new_pw.pack(side="left", fill="x", expand=True, ipady=5, ipadx=4)
 
         # ── B2: Apply buttons (dynamic labels) ───────────────────────────────
@@ -468,12 +468,12 @@ class AppView(tk.Tk):
         apply_row.pack(fill="x")
 
         self.btn_apply_selected = self._flat_btn(
-            apply_row, "→ Cho đã chọn (0)", _P["accent"],
+            apply_row, "→ Áp dụng đã chọn (0)", _P["accent"],
             fnt=("Segoe UI", 8, "bold"))
         self.btn_apply_selected.pack(side="left", padx=(0, 6))
 
         self.btn_apply_all = self._flat_btn(
-            apply_row, "→ Tất cả (0)", _P["orange"],
+            apply_row, "→ Áp dụng tất cả (0)", _P["orange"],
             fnt=("Segoe UI", 8, "bold"))
         self.btn_apply_all.pack(side="left")
 
@@ -485,7 +485,7 @@ class AppView(tk.Tk):
 
         self.btn_toggle_manual = tk.Button(
             cp_toggle_wrap,
-            text="⊕  Quản lý tài khoản",
+            text="⊕  Thêm / sửa account",
             bg=_P["surface"], fg=_P["dim"],
             activebackground=_P["border"], activeforeground=_P["text"],
             relief="flat", cursor="hand2", bd=0, anchor="w",
@@ -514,7 +514,7 @@ class AppView(tk.Tk):
         self.e_old_pw_cp = _cpfield("Mật khẩu cũ", "old password", mask="*")
 
         tk.Label(man_inner,
-                 text="★  MK mới dùng từ ô \"Mật khẩu mới\" ở trên",
+                 text="★  MK mới lấy từ ô \"MK mới chung\"",
                  bg=_P["surface"], fg=_P["dim"],
                  font=("Segoe UI", 7, "italic")).pack(anchor="w", pady=(0, 6))
 
@@ -528,7 +528,7 @@ class AppView(tk.Tk):
 
         # ── Initial state ──────────────────────────────────────────────────────
         self._mode: str = "login"
-        self._old_pw_ph: str = "password"
+        self._old_pw_ph: str = "old password"
 
         self._divider(panel, (0, 0))
 
@@ -547,7 +547,7 @@ class AppView(tk.Tk):
                                  show="headings", selectmode="extended")
         for col, text, w, mw in [
             ("username",     "Tài khoản",    155, 50),
-            ("old_password", "Mật khẩu",     145, 50),
+            ("old_password", "Mật khẩu cũ",  145, 50),
             ("new_password", "Mật khẩu mới",   0,  0),   # hidden in login mode
             ("status",       "Trạng thái",    70, 50),
         ]:
@@ -566,6 +566,8 @@ class AppView(tk.Tk):
         bot.pack(fill="x", padx=12, pady=6)
         self.btn_clear = self._flat_btn(bot, "✕ Xóa tất cả", _P["dim"])
         self.btn_clear.pack(side="right")
+
+        self.set_mode("change_pw")
 
     # ── Right panel: Log ──────────────────────────────────────────────────────
     def _build_log_panel(self, parent: tk.Frame) -> None:
@@ -610,7 +612,9 @@ class AppView(tk.Tk):
         tk.Frame(self, bg=_P["border"], height=1).pack(fill="x")
         sb = tk.Frame(self, bg=_P["panel"])
         sb.pack(fill="x", side="bottom")
-        self.status_var = tk.StringVar(value="● Sẵn sàng")
+        self.status_var = tk.StringVar(
+            value="● Sẵn sàng - bước 1: mở myaccount.vnggames.com"
+        )
         tk.Label(sb, textvariable=self.status_var,
                  bg=_P["panel"], fg=_P["muted"],
                  font=("Segoe UI", 8), padx=12, pady=5, anchor="w").pack(fill="x")
@@ -623,7 +627,7 @@ class AppView(tk.Tk):
         v = entry.get()
         return "" if v == placeholder else v
 
-    def get_url(self)  -> str: return self._val(self.e_url, "https://example.com/login")
+    def get_url(self)  -> str: return self._val(self.e_url, URL_PLACEHOLDER)
     def get_mode(self) -> str: return self._mode
 
     def get_user(self) -> str:
@@ -635,21 +639,21 @@ class AppView(tk.Tk):
     def get_old_pw(self) -> str:
         """Trả về mật khẩu (cũ) từ form hiện đang active."""
         if self._mode == "login":
-            return self._val(self.e_old_pw, "password")
+            return self._val(self.e_old_pw, "old password")
         return self._val(self.e_old_pw_cp, "old password")
 
     def get_new_pw(self) -> str:
-        return self._val(self.e_new_pw, "nhập mật khẩu mới")
+        return self._val(self.e_new_pw, NEW_PW_PLACEHOLDER)
 
     def set_mode(self, mode: str) -> None:
         """Chuyển chế độ: 'login' hoặc 'change_pw'."""
         self._mode = mode
         if mode == "login":
-            self._old_pw_ph = "password"
+            self._old_pw_ph = "old password"
             self.frame_changepw_section.pack_forget()
             self.frame_login_section.pack(fill="x", padx=12, pady=(10, 8))
             self.tree.column("old_password", width=145)
-            self.tree.heading("old_password", text="Mật khẩu")
+            self.tree.heading("old_password", text="Mật khẩu cũ")
             self.tree.column("new_password", width=0, minwidth=0)
             self._hint_lbl.config(
                 text="💡 Click vào dòng để tự điền form")
@@ -684,7 +688,7 @@ class AppView(tk.Tk):
     def clear_add_form(self) -> None:
         """Xóa form sau khi thêm/sửa xong."""
         if self._mode == "login":
-            for e, ph in ((self.e_user, "username"), (self.e_old_pw, "password")):
+            for e, ph in ((self.e_user, "username"), (self.e_old_pw, "old password")):
                 e.config(fg=_P["muted"], show="")
                 e.delete(0, "end")
                 e.insert(0, ph)
@@ -714,10 +718,10 @@ class AppView(tk.Tk):
                 self.e_new_pw.insert(0, new_password)
             else:
                 # Giữ nguyên nếu tài khoản chưa có new_password
-                if self.e_new_pw.get() in ("nhập mật khẩu mới", ""):
+                if self.e_new_pw.get() in (NEW_PW_PLACEHOLDER, ""):
                     self.e_new_pw.config(fg=_P["muted"], show="")
                     self.e_new_pw.delete(0, "end")
-                    self.e_new_pw.insert(0, "nhập mật khẩu mới")
+                    self.e_new_pw.insert(0, NEW_PW_PLACEHOLDER)
             # Điền vào manual section (cho trường hợp cần sửa username/old_pw)
             self.e_user_cp.config(fg=_P["text"], show="")
             self.e_user_cp.delete(0, "end")
@@ -730,8 +734,8 @@ class AppView(tk.Tk):
         """Cập nhật số đếm trên nút Áp dụng khi selection hoặc danh sách thay đổi."""
         sel   = len(self.tree.selection())
         total = self.tree_count()
-        self.btn_apply_selected.config(text=f"→ Cho đã chọn ({sel})")
-        self.btn_apply_all.config(text=f"→ Tất cả ({total})")
+        self.btn_apply_selected.config(text=f"→ Áp dụng đã chọn ({sel})")
+        self.btn_apply_all.config(text=f"→ Áp dụng tất cả ({total})")
 
     # ── Treeview helpers ──────────────────────────────────────────────────────
     def tree_append(self, acc: Account) -> str:
@@ -821,7 +825,7 @@ class AppController:
 
     def _bind(self) -> None:
         v = self.view
-        # Login section
+        # Manual account section
         v.btn_add.config(command=self._on_add)
         v.btn_edit.config(command=self._on_edit)
         v.btn_delete.config(command=self._on_delete)
@@ -847,7 +851,7 @@ class AppController:
         if mode == self.view.get_mode():
             return
         self.view.set_mode(mode)
-        label = "Đăng nhập" if mode == "login" else "Đổi mật khẩu"
+        label = "Nhập tay" if mode == "login" else "Đổi mật khẩu"
         self.view.log(f"✔ Chế độ: {label}")
 
     # ── Thêm / Sửa / Xóa tài khoản ───────────────────────────────────────────
@@ -865,7 +869,7 @@ class AppController:
             messagebox.showwarning("Thiếu thông tin", f"Vui lòng nhập {label}.")
             return
         if mode == "change_pw" and not new_pw:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới cần đổi.")
             return
 
         acc = Account(username=user, old_password=old_pw, new_password=new_pw)
@@ -922,8 +926,12 @@ class AppController:
     # ── Import / Export ────────────────────────────────────────────────────────
     def _on_import(self) -> None:
         path = filedialog.askopenfilename(
-            title="Chọn file tài khoản",
-            filetypes=[("CSV / Excel", "*.csv *.xlsx *.xls"), ("Tất cả", "*.*")],
+            title="Chọn file account",
+            filetypes=[
+                ("TXT account", "*.txt"),
+                ("CSV / Excel", "*.csv *.xlsx *.xls"),
+                ("Tất cả", "*.*"),
+            ],
         )
         if not path:
             return
@@ -944,17 +952,24 @@ class AppController:
         if not self.model.accounts:
             messagebox.showinfo("Trống", "Chưa có tài khoản nào để xuất.")
             return
+        changed = [acc for acc in self.model.accounts if acc.status == "ok"]
+        if not changed:
+            messagebox.showinfo(
+                "Chưa có kết quả",
+                "Chưa có account nào đổi mật khẩu thành công để xuất.",
+            )
+            return
         path = filedialog.asksaveasfilename(
-            title="Lưu kết quả",
-            defaultextension=".csv",
-            filetypes=[("CSV", "*.csv"), ("Excel", "*.xlsx")],
+            title="Xuất account đã đổi mật khẩu",
+            defaultextension=".txt",
+            filetypes=[("TXT account", "*.txt")],
         )
         if not path:
             return
         try:
-            save_file(self.model.accounts, path)
+            count = save_changed_txt(self.model.accounts, path)
             self.view.log(
-                f"✔ Đã xuất {len(self.model.accounts)} tài khoản → {Path(path).name}")
+                f"✔ Đã xuất {count} account đã đổi mật khẩu → {Path(path).name}")
         except Exception as exc:
             messagebox.showerror("Lỗi lưu file", str(exc))
 
@@ -963,70 +978,31 @@ class AppController:
         if self.model.running:
             return
 
-        # Lấy danh sách tài khoản theo thứ tự hiển thị trên cây
-        iid_accounts = [
-            (iid, self._iid_map[iid])
-            for iid in self.view.tree.get_children()
-            if iid in self._iid_map
-        ]
-        if not iid_accounts:
-            messagebox.showwarning("Trống", "Chưa có tài khoản nào trong danh sách.")
-            return
-
-        accounts = [acc for _, acc in iid_accounts]
-        iid_list  = [iid for iid, _ in iid_accounts]
-        total     = len(accounts)
-
         raw_url = self.view.get_url().strip()
         if raw_url and not raw_url.startswith(("http://", "https://")):
             raw_url = "https://" + raw_url
-        url = raw_url or VNG_LOGIN_URL
+        url = raw_url or VNG_ACCOUNT_URL
+        total = len(self.model.accounts)
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.set_status(f"● Đang chạy... (0 / {total})")
+        self.view.log("▶ Bước 1: mở My Account VNG, chưa tự động bấm tiếp.")
+        self.view.set_status("● Đang mở myaccount.vnggames.com...")
         self.view.set_progress(0, total)
-
-        def _on_result(idx: int, result: ChangeResult) -> None:
-            status = "ok" if result.success else "fail"
-            iid = iid_list[idx] if idx < len(iid_list) else None
-            if iid:
-                self.view.after(0, self.view.tree_update_status, iid, status)
-                acc = self._iid_map.get(iid)
-                if acc:
-                    acc.status = status
-            self.view.set_progress(idx + 1, total)
-            self.view.set_status(
-                f"● Đang chạy... ({idx + 1} / {total})"
-                if idx + 1 < total else f"● Hoàn tất ({total} / {total})"
-            )
-
-        mode = self.view.get_mode()
 
         def _worker() -> None:
             try:
-                if mode == "login":
-                    run_login_batch(
-                        accounts=accounts,
-                        url=url,
-                        log=self.view.log,
-                        on_result=_on_result,
-                        stop_flag=self.model.stop_requested,
-                    )
-                else:
-                    run_batch(
-                        accounts=accounts,
-                        url=url,
-                        log=self.view.log,
-                        on_result=_on_result,
-                        stop_flag=self.model.stop_requested,
-                    )
+                open_myaccount_page(
+                    url=url,
+                    log=self.view.log,
+                    stop_flag=self.model.stop_requested,
+                )
             except Exception as exc:
                 self.view.log(f"✗ Lỗi nghiêm trọng: {exc}")
             finally:
                 self.model.running = False
                 self.view.after(0, lambda: self.view.btn_run.config(state="normal"))
-                self.view.set_status("● Sẵn sàng")
+                self.view.set_status("● Sẵn sàng - auto đã dừng ở bước mở trang")
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1056,16 +1032,16 @@ class AppController:
         v._manual_open = not v._manual_open
         if v._manual_open:
             v.frame_manual_add.pack(fill="x", padx=12, pady=(0, 8))
-            v.btn_toggle_manual.config(text="⊖  Quản lý tài khoản  ▾")
+            v.btn_toggle_manual.config(text="⊖  Thêm / sửa account  ▾")
         else:
             v.frame_manual_add.pack_forget()
-            v.btn_toggle_manual.config(text="⊕  Quản lý tài khoản")
+            v.btn_toggle_manual.config(text="⊕  Thêm / sửa account")
 
     # ── Áp dụng mật khẩu mới cho tài khoản đã chọn ───────────────────────────
     def _on_apply_to_selected(self) -> None:
         new_pw = self.view.get_new_pw()
         if not new_pw:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới cần đổi.")
             return
         selected = self.view.tree.selection()
         if not selected:
@@ -1084,7 +1060,7 @@ class AppController:
     def _on_apply_pw_all(self) -> None:
         new_pw = self.view.get_new_pw()
         if not new_pw:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới.")
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập mật khẩu mới cần đổi.")
             return
         if not self._iid_map:
             messagebox.showinfo("Trống", "Chưa có tài khoản nào trong danh sách.")
