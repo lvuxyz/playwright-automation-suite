@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from account_loader import Account, load_file, save_changed_txt
 from changer import (
     VNG_ACCOUNT_URL,
-    run_login_batch,
+    login_and_hold_account,
 )
 
 URL_PLACEHOLDER = VNG_ACCOUNT_URL
@@ -983,11 +983,18 @@ class AppController:
             raw_url = "https://" + raw_url
         url = raw_url or VNG_ACCOUNT_URL
 
-        accounts = list(self.model.accounts)
+        selected_iid = self.view.tree_selected_iid()
+        selected_acc = self._iid_map.get(selected_iid) if selected_iid else None
         iid_by_account_id = {id(acc): iid for iid, acc in self._iid_map.items()}
-        run_iids: list[str | None] = [iid_by_account_id.get(id(acc)) for acc in accounts]
 
-        if not accounts:
+        if selected_acc:
+            account = selected_acc
+            run_iid = selected_iid
+        elif self.model.accounts:
+            account = self.model.accounts[0]
+            run_iid = iid_by_account_id.get(id(account))
+            self.view.log(f"→ Chưa chọn dòng, dùng account đầu tiên: {account.username}")
+        else:
             user = self.view.get_user().strip()
             old_pw = self.view.get_old_pw()
             if not user or not old_pw:
@@ -996,42 +1003,39 @@ class AppController:
                     "Vui lòng thêm/import account hoặc nhập tài khoản và mật khẩu.",
                 )
                 return
-            accounts = [Account(username=user, old_password=old_pw, new_password="")]
-            run_iids = [None]
+            account = Account(username=user, old_password=old_pw, new_password="")
+            run_iid = None
 
-        total = len(accounts)
-        for iid in run_iids:
-            if iid:
-                self.view.tree_update_status(iid, "-")
+        if run_iid:
+            self.view.tree_update_status(run_iid, "-")
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.log("▶ Mở My Account VNG và tự động đăng nhập...")
-        self.view.set_status("● Đang đăng nhập VNG...")
-        self.view.set_progress(0, total)
+        self.view.log("▶ Mở My Account VNG, bấm Bảo mật rồi dừng...")
+        self.view.set_status("● Đang đăng nhập và mở trang Bảo mật...")
+        self.view.set_progress(0, 1)
 
-        def _on_result(index, result) -> None:
+        def _on_result(result) -> None:
             status = "ok" if result.success else "fail"
-            account = accounts[index]
             account.status = status
             account.note = result.message
 
-            iid = run_iids[index]
-            if iid:
+            if run_iid:
                 self.view.after(
                     0,
-                    lambda iid=iid, status=status: self.view.tree_update_status(iid, status),
+                    lambda iid=run_iid, status=status: self.view.tree_update_status(iid, status),
                 )
 
-            done = index + 1
-            self.view.set_progress(done, total)
-            if done == total:
-                self.view.set_status("● Đăng nhập xong - bấm Dừng để đóng Chrome")
+            self.view.set_progress(1, 1)
+            if result.success:
+                self.view.set_status("● Đã mở Bảo mật - dừng để kiểm tra")
+            else:
+                self.view.set_status("● Mở Bảo mật thất bại")
 
         def _worker() -> None:
             try:
-                run_login_batch(
-                    accounts=accounts,
+                login_and_hold_account(
+                    account=account,
                     url=url,
                     log=self.view.log,
                     on_result=_on_result,

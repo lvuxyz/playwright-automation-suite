@@ -43,6 +43,43 @@ VNG_SELECTORS = {
     "btn_login":    'button[data-id="login_button_continue_and_play"]',
 }
 
+VNG_ACCOUNT_SELECTORS = {
+    "security_nav": [
+        '#account-menu-security',
+        'a[href*="/security"]',
+        'div:has-text("Bảo mật")',
+        'button:has-text("Bảo mật")',
+        'a:has-text("Bảo mật")',
+        'text=Bảo mật',
+    ],
+    "password_update": [
+        'xpath=//*[normalize-space()="Mật khẩu hiện tại"]'
+        '/ancestor::div[.//*[normalize-space()="Cập nhật"]][1]'
+        '//*[normalize-space()="Cập nhật"]',
+        'button:has-text("Cập nhật")',
+        'text=Cập nhật',
+    ],
+    "current_password": [
+        'input[placeholder="Nhập mật khẩu hiện tại"]',
+        'input[name="current_password"]',
+        'input[name="old_password"]',
+    ],
+    "new_password": [
+        'input[placeholder="Nhập mật khẩu mới"]',
+        'input[name="new_password"]',
+    ],
+    "confirm_password": [
+        'input[placeholder="Nhập lại mật khẩu mới"]',
+        'input[name="confirm_password"]',
+        'input[name="password_confirmation"]',
+    ],
+    "submit_change": [
+        'div[role="dialog"] button:has-text("Cập nhật")',
+        'button:has-text("Cập nhật")',
+        'text=Cập nhật',
+    ],
+}
+
 # Nạp config nếu có, không thì dùng giá trị rỗng
 try:
     from config import BASE_URL, BROWSER, CHANGE_PASSWORD_URL  # type: ignore
@@ -187,6 +224,166 @@ def _vng_login(page: Page, username: str, password: str, log: LogFn) -> None:
 
     except Exception:
         pass  # Kịch bản A: đã vào thẳng trang đích, không cần xử lý thêm
+
+
+def _click_visible(
+    page: Page,
+    selectors: list[str],
+    timeout: int,
+    prefer_last: bool = False,
+) -> None:
+    last_error: Exception | None = None
+
+    for selector in selectors:
+        locator = page.locator(selector)
+        try:
+            locator.first.wait_for(state="visible", timeout=timeout)
+        except Exception as exc:
+            last_error = exc
+            continue
+
+        try:
+            count = locator.count()
+        except Exception as exc:
+            last_error = exc
+            continue
+
+        indexes = range(count - 1, -1, -1) if prefer_last else range(count)
+        for index in indexes:
+            item = locator.nth(index)
+            try:
+                if item.is_visible():
+                    item.click(timeout=timeout)
+                    return
+            except Exception as exc:
+                last_error = exc
+
+    msg = str(last_error).splitlines()[0] if last_error else "Không tìm thấy phần tử"
+    raise RuntimeError(msg)
+
+
+def _fill_first_visible(
+    page: Page,
+    selectors: list[str],
+    value: str,
+    timeout: int,
+) -> bool:
+    for selector in selectors:
+        field = page.locator(selector).first
+        try:
+            field.wait_for(state="visible", timeout=timeout)
+            field.fill(value, timeout=timeout)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _visible_password_fields(page: Page) -> list:
+    fields = []
+    inputs = page.locator('input[type="password"]')
+    for index in range(inputs.count()):
+        field = inputs.nth(index)
+        try:
+            if field.is_visible():
+                fields.append(field)
+        except Exception:
+            continue
+    return fields
+
+
+def _open_security_page(page: Page, log: LogFn) -> None:
+    timeout = BROWSER.get("timeout", 15_000)
+
+    log("  → Bấm menu Bảo mật")
+    try:
+        _click_visible(page, VNG_ACCOUNT_SELECTORS["security_nav"], timeout=timeout)
+    except Exception:
+        log("  → Không click được menu, mở trực tiếp trang Bảo mật")
+        page.goto(f"{VNG_ACCOUNT_URL}/security?lang=vi", wait_until="domcontentloaded")
+
+    try:
+        page.wait_for_url(lambda url: "/security" in url, timeout=timeout)
+    except Exception:
+        pass
+    page.wait_for_selector("text=Mật khẩu hiện tại", state="visible", timeout=timeout)
+
+
+def _open_change_password_modal(page: Page, log: LogFn) -> None:
+    timeout = BROWSER.get("timeout", 15_000)
+
+    log("  → Bấm Cập nhật ở mục Mật khẩu hiện tại")
+    _click_visible(page, VNG_ACCOUNT_SELECTORS["password_update"], timeout=timeout)
+
+    try:
+        page.wait_for_selector("text=Thay đổi mật khẩu", state="visible", timeout=timeout)
+    except Exception:
+        pass
+    try:
+        page.wait_for_selector(
+            VNG_ACCOUNT_SELECTORS["current_password"][0],
+            state="visible",
+            timeout=timeout,
+        )
+    except Exception:
+        page.wait_for_selector('input[type="password"]', state="visible", timeout=timeout)
+
+
+def _fill_password_change_modal(page: Page, old_pw: str, new_pw: str, log: LogFn) -> None:
+    timeout = BROWSER.get("timeout", 15_000)
+
+    log("  → Điền mật khẩu hiện tại")
+    old_ok = _fill_first_visible(
+        page,
+        VNG_ACCOUNT_SELECTORS["current_password"],
+        old_pw,
+        timeout,
+    )
+
+    log("  → Điền mật khẩu mới")
+    new_ok = _fill_first_visible(
+        page,
+        VNG_ACCOUNT_SELECTORS["new_password"],
+        new_pw,
+        timeout,
+    )
+
+    log("  → Xác nhận mật khẩu mới")
+    confirm_ok = _fill_first_visible(
+        page,
+        VNG_ACCOUNT_SELECTORS["confirm_password"],
+        new_pw,
+        timeout,
+    )
+
+    if not (old_ok and new_ok and confirm_ok):
+        fields = _visible_password_fields(page)
+        if len(fields) < 3:
+            raise RuntimeError("Không tìm đủ 3 ô đổi mật khẩu.")
+        fields[0].fill(old_pw, timeout=timeout)
+        fields[1].fill(new_pw, timeout=timeout)
+        fields[2].fill(new_pw, timeout=timeout)
+
+    log("  → Bấm Cập nhật trong hộp đổi mật khẩu")
+    _click_visible(
+        page,
+        VNG_ACCOUNT_SELECTORS["submit_change"],
+        timeout=timeout,
+        prefer_last=True,
+    )
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except Exception:
+        pass
+
+
+def _submit_vng_password_change(page: Page, account: Account, log: LogFn) -> None:
+    if not account.new_password:
+        raise RuntimeError("Account chưa có mật khẩu mới.")
+
+    _open_security_page(page, log)
+    _open_change_password_modal(page, log)
+    _fill_password_change_modal(page, account.old_password, account.new_password, log)
 
 
 def _login(page: Page, username: str, password: str, log: LogFn) -> None:
@@ -394,6 +591,76 @@ def login_account(
     finally:
         if context:
             context.close()
+
+
+def login_and_hold_account(
+    account: Account,
+    url: str = "",
+    log: LogFn = _log_noop,
+    stop_flag: Callable[[], bool] | None = None,
+    on_result: Callable[[ChangeResult], None] | None = None,
+) -> ChangeResult:
+    """Đăng nhập 1 account, bấm Bảo mật rồi giữ Chrome mở để kiểm tra."""
+    target_url = (url or VNG_ACCOUNT_URL).strip()
+    if target_url and not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+
+    result: ChangeResult | None = None
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=BROWSER.get("headless", False),
+            slow_mo=BROWSER.get("slow_mo", 0),
+        )
+        context: BrowserContext | None = None
+        try:
+            context = browser.new_context(
+                viewport=BROWSER.get("viewport", {"width": 1280, "height": 720}),
+                locale=BROWSER.get("locale", "vi-VN"),
+            )
+            page = context.new_page()
+            page.set_default_timeout(BROWSER.get("timeout", 15_000))
+
+            log(f"▶ [{account.username}] Mở My Account VNG...")
+            page.goto(target_url, wait_until="domcontentloaded")
+
+            log(f"▶ [{account.username}] Đang đăng nhập...")
+            _vng_login(page, account.username, account.old_password, log)
+
+            log(f"▶ [{account.username}] Bấm menu Bảo mật...")
+            _open_security_page(page, log)
+
+            final_url = page.url
+            short_url = final_url[:70] + ("..." if len(final_url) > 70 else "")
+            result = ChangeResult(account.username, True, f"Đã mở Bảo mật → {short_url}")
+            log(f"✔ [{account.username}] Đã mở Bảo mật → dừng để kiểm tra")
+            if on_result:
+                on_result(result)
+
+            while not (stop_flag and stop_flag()) and browser.is_connected():
+                time.sleep(0.5)
+
+        except Exception as exc:
+            msg = str(exc).splitlines()[0]
+            result = ChangeResult(account.username, False, msg)
+            log(f"✗ [{account.username}] Lỗi mở Bảo mật: {msg}")
+            if on_result:
+                on_result(result)
+
+        finally:
+            try:
+                if context and browser.is_connected():
+                    context.close()
+            except Exception:
+                pass
+            try:
+                if browser.is_connected():
+                    browser.close()
+            except Exception:
+                pass
+            time.sleep(0.3)
+
+    return result or ChangeResult(account.username, False, "Không có kết quả")
 
 
 def run_login_batch(
