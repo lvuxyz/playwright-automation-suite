@@ -75,9 +75,12 @@ VNG_ACCOUNT_SELECTORS = {
         'input[name="password_confirmation"]',
     ],
     "submit_change": [
-        'div[role="dialog"] button[data-id="button-update"]:not([disabled])',
-        'div[role="dialog"] button:has-text("Cập nhật")',
-        'button[data-id="button-update"]:not([disabled])',
+        'div[role="dialog"] button[data-id="button-update"]:not([disabled]), '
+        'div[role="dialog"] button[data-id="submit"]:not([disabled]), '
+        'div[role="dialog"] button:not([disabled]):has-text("Cập nhật")',
+        'button[data-id="button-update"]:not([disabled]), '
+        'button[data-id="submit"]:not([disabled]), '
+        'button:not([disabled]):has-text("Cập nhật")',
         'button:has-text("Cập nhật")',
         'text=Cập nhật',
     ],
@@ -265,6 +268,73 @@ def _click_visible(
     raise RuntimeError(msg)
 
 
+def _click_visible_fast(
+    page: Page,
+    selectors: list[str],
+    timeout: int,
+    prefer_last: bool = False,
+) -> None:
+    quick_timeout = min(timeout, 1_200)
+    last_error: Exception | None = None
+
+    for selector in selectors:
+        try:
+            page.wait_for_selector(selector, state="visible", timeout=quick_timeout)
+        except Exception as exc:
+            last_error = exc
+            continue
+
+        locator = page.locator(selector)
+        try:
+            count = locator.count()
+        except Exception as exc:
+            last_error = exc
+            continue
+
+        indexes = range(count - 1, -1, -1) if prefer_last else range(count)
+        for index in indexes:
+            item = locator.nth(index)
+            try:
+                if not item.is_visible():
+                    continue
+                clicked = item.evaluate(
+                    """(el) => {
+                        const target = el.closest("button") || el;
+                        const rect = target.getBoundingClientRect();
+                        const style = window.getComputedStyle(target);
+                        const disabled =
+                            target.disabled ||
+                            target.hasAttribute("disabled") ||
+                            target.getAttribute("aria-disabled") === "true";
+
+                        if (
+                            disabled ||
+                            rect.width === 0 ||
+                            rect.height === 0 ||
+                            style.display === "none" ||
+                            style.visibility === "hidden"
+                        ) {
+                            return false;
+                        }
+
+                        target.click();
+                        return true;
+                    }"""
+                )
+                if clicked:
+                    return
+            except Exception as exc:
+                last_error = exc
+                try:
+                    item.click(timeout=500, force=True, no_wait_after=True)
+                    return
+                except Exception as click_exc:
+                    last_error = click_exc
+
+    msg = str(last_error).splitlines()[0] if last_error else "Không tìm thấy phần tử"
+    raise RuntimeError(msg)
+
+
 def _fill_first_visible(
     page: Page,
     selectors: list[str],
@@ -318,8 +388,13 @@ def _open_change_password_modal(page: Page, log: LogFn) -> None:
     log("  → Bấm Cập nhật ở mục Mật khẩu hiện tại")
     _click_visible(page, VNG_ACCOUNT_SELECTORS["password_update"], timeout=timeout)
 
+    title_timeout = min(timeout, 1_500)
     try:
-        page.wait_for_selector("text=Thay đổi mật khẩu", state="visible", timeout=timeout)
+        page.wait_for_selector(
+            "text=Thay đổi mật khẩu",
+            state="visible",
+            timeout=title_timeout,
+        )
     except Exception:
         pass
     try:
@@ -368,16 +443,22 @@ def _fill_password_change_modal(page: Page, old_pw: str, new_pw: str, log: LogFn
         fields[2].fill(new_pw, timeout=timeout)
 
     log("  → Bấm Cập nhật trong hộp đổi mật khẩu")
-    _click_visible(
+    _click_visible_fast(
         page,
         VNG_ACCOUNT_SELECTORS["submit_change"],
         timeout=timeout,
         prefer_last=True,
     )
+    log("  → Đã bấm Cập nhật, chờ phản hồi ngắn...")
+    settle_timeout = min(timeout, 1_500)
     try:
-        page.wait_for_load_state("networkidle", timeout=timeout)
+        page.wait_for_selector(
+            'div[role="dialog"]:visible',
+            state="hidden",
+            timeout=settle_timeout,
+        )
     except Exception:
-        pass
+        page.wait_for_timeout(150)
 
 
 def _submit_vng_password_change(page: Page, account: Account, log: LogFn) -> None:
