@@ -542,8 +542,8 @@ def run_flow(page, url: str, username: str, password: str, log) -> None:
         log("  ⚠ Chưa có config.py — bỏ qua luồng thật.")
         return
 
-    page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-    page.wait_for_load_state("networkidle", timeout=15_000)
+    page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+    page.wait_for_load_state("networkidle", timeout=30_000)
 
     # ── Bước 1: Click nút Đăng Nhập (trong iframe event) ──────────────
     event_frame = next((f for f in page.frames if "event.vnggames.com" in f.url), None)
@@ -565,11 +565,15 @@ def run_flow(page, url: str, username: str, password: str, log) -> None:
     main.click(SELECTORS["continue_btn"])
     log("  → Đã nhập email, bấm Continue")
 
-    # ── Bước 4: Chờ ô mật khẩu → nhập → Submit ───────────────────────
-    main.wait_for_selector(SELECTORS["password_input"], state="visible", timeout=10_000)
+    # ── Bước 4: Chờ trang/SPA render ô mật khẩu → nhập → Submit ──────
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=20_000)
+    except Exception:
+        pass  # SPA không navigate thật — bỏ qua
+    main.wait_for_selector(SELECTORS["password_input"], state="visible", timeout=30_000)
     main.fill(SELECTORS["password_input"], password)
     main.click(SELECTORS["submit_btn"])
-    page.wait_for_load_state("networkidle", timeout=15_000)
+    page.wait_for_load_state("networkidle", timeout=30_000)
     log(f"  ✔ Đăng nhập: {username}")
 
     # ── Bước 5: Reload lấy lại event_frame sau khi login ─────────────
@@ -633,6 +637,19 @@ def _handle_task(event_frame, page, log, task_idx: int) -> None:
     name_sel = (f"#popup_getlist .table_history tbody"
                 f" tr:nth-child({task_idx}) td:nth-child(2)")
 
+    # ── Đóng popup tồn đọng từ task trước (nếu có) ───────────────────
+    try:
+        still_active = event_frame.evaluate("""() => {
+            const popups = document.querySelectorAll('.MS__popup.active');
+            popups.forEach(p => p.classList.remove('active'));
+            return popups.length;
+        }""")
+        if still_active:
+            log(f"  → Đã dọn {still_active} popup tồn đọng trước khi xử lý task")
+            page.wait_for_timeout(300)
+    except Exception:
+        pass
+
     # ── Đọc tên nhiệm vụ ──────────────────────────────────────────────
     try:
         name_el = event_frame.query_selector(name_sel)
@@ -642,10 +659,11 @@ def _handle_task(event_frame, page, log, task_idx: int) -> None:
     log(f"  → Nhiệm vụ: {name}")
 
     # ── Click "Nhận Lượt" ─────────────────────────────────────────────
+    # Dùng dispatch_event để bypass overlay/popup đang active chặn pointer events
     log(f"  → Click Nhận Lượt...")
     try:
         btn = event_frame.wait_for_selector(btn_sel, state="attached", timeout=5_000)
-        btn.click()
+        btn.dispatch_event("click")
         page.wait_for_timeout(2_000)
     except Exception as e:
         log(f"  ✗ Không click được nút: {e}")
