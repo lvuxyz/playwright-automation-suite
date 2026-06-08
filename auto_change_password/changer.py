@@ -125,6 +125,10 @@ class ChangeResult:
     message:  str = ""
 
 
+class VNGLoginError(RuntimeError):
+    """Raised when a VNG account cannot pass the login step."""
+
+
 # ── Hàm thao tác từng bước ────────────────────────────────────────────────
 
 LogFn = Callable[[str], None]
@@ -745,6 +749,113 @@ def login_and_hold_account(
             time.sleep(0.3)
 
     return result or ChangeResult(account.username, False, "Không có kết quả")
+
+
+def _clear_context_data(context: BrowserContext) -> None:
+    for page in context.pages:
+        try:
+            page.evaluate(
+                "() => { localStorage.clear(); sessionStorage.clear(); }"
+            )
+        except Exception:
+            pass
+    try:
+        context.clear_cookies()
+    except Exception:
+        pass
+    try:
+        context.clear_permissions()
+    except Exception:
+        pass
+    try:
+        context.close()
+    except Exception:
+        pass
+
+
+def run_vng_password_change_batch(
+    accounts: list[Account],
+    url: str = "",
+    log: LogFn = _log_noop,
+    on_result: Callable[[int, ChangeResult], None] | None = None,
+    stop_flag: Callable[[], bool] | None = None,
+) -> list[ChangeResult]:
+    """Đổi mật khẩu VNG tuần tự, mỗi account dùng một Chrome/context mới."""
+    target_url = (url or VNG_ACCOUNT_URL).strip()
+    if target_url and not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+
+    results: list[ChangeResult] = []
+
+    with sync_playwright() as pw:
+        for index, account in enumerate(accounts):
+            if stop_flag and stop_flag():
+                log("⚠ Đã dừng theo yêu cầu người dùng.")
+                break
+
+            browser: Browser | None = None
+            context: BrowserContext | None = None
+
+            try:
+                if not account.new_password:
+                    raise RuntimeError("Account chưa có mật khẩu mới.")
+
+                browser = pw.chromium.launch(
+                    headless=BROWSER.get("headless", False),
+                    slow_mo=BROWSER.get("slow_mo", 0),
+                )
+                context = browser.new_context(
+                    viewport=BROWSER.get("viewport", {"width": 1280, "height": 720}),
+                    locale=BROWSER.get("locale", "vi-VN"),
+                )
+                page = context.new_page()
+                page.set_default_timeout(BROWSER.get("timeout", 15_000))
+
+                log(f"▶ [{account.username}] Mở Chrome mới...")
+                page.goto(target_url, wait_until="domcontentloaded")
+
+                log(f"▶ [{account.username}] Đăng nhập...")
+                try:
+                    _vng_login(page, account.username, account.old_password, log)
+                except Exception as exc:
+                    msg = str(exc).splitlines()[0]
+                    raise VNGLoginError(f"Đăng nhập thất bại: {msg}") from exc
+
+                log(f"▶ [{account.username}] Đổi mật khẩu...")
+                _submit_vng_password_change(page, account, log)
+
+                final_url = page.url
+                short_url = final_url[:70] + ("..." if len(final_url) > 70 else "")
+                result = ChangeResult(account.username, True, f"Đã cập nhật → {short_url}")
+                log(f"✔ [{account.username}] Đổi mật khẩu thành công")
+
+            except Exception as exc:
+                msg = str(exc).splitlines()[0]
+                result = ChangeResult(account.username, False, msg)
+                if isinstance(exc, VNGLoginError):
+                    log(f"✗ [{account.username}] {msg}")
+                    log(f"  → [{account.username}] Bỏ qua account này, chuyển account tiếp theo")
+                else:
+                    log(f"✗ [{account.username}] Lỗi đổi mật khẩu: {msg}")
+
+            finally:
+                if context:
+                    _clear_context_data(context)
+                try:
+                    if browser and browser.is_connected():
+                        browser.close()
+                except Exception:
+                    pass
+                log(f"  → [{account.username}] Đã đóng Chrome và xoá dữ liệu phiên")
+                time.sleep(0.3)
+
+            results.append(result)
+            if on_result:
+                on_result(index, result)
+
+            time.sleep(0.5)
+
+    return results
 
 
 def run_login_batch(

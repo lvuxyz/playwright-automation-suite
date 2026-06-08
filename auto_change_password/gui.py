@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from account_loader import Account, load_file, save_changed_txt
 from changer import (
     VNG_ACCOUNT_URL,
-    login_and_hold_account,
+    run_vng_password_change_batch,
 )
 
 URL_PLACEHOLDER = VNG_ACCOUNT_URL
@@ -983,72 +983,73 @@ class AppController:
             raw_url = "https://" + raw_url
         url = raw_url or VNG_ACCOUNT_URL
 
-        selected_iid = self.view.tree_selected_iid()
-        selected_acc = self._iid_map.get(selected_iid) if selected_iid else None
+        accounts = list(self.model.accounts)
         iid_by_account_id = {id(acc): iid for iid, acc in self._iid_map.items()}
+        run_iids: list[str | None] = [iid_by_account_id.get(id(acc)) for acc in accounts]
 
-        if selected_acc:
-            account = selected_acc
-            run_iid = selected_iid
-        elif self.model.accounts:
-            account = self.model.accounts[0]
-            run_iid = iid_by_account_id.get(id(account))
-            self.view.log(f"→ Chưa chọn dòng, dùng account đầu tiên: {account.username}")
-        else:
+        if not accounts:
             user = self.view.get_user().strip()
             old_pw = self.view.get_old_pw()
-            if not user or not old_pw:
+            new_pw = self.view.get_new_pw()
+            if not user or not old_pw or not new_pw:
                 messagebox.showwarning(
                     "Thiếu thông tin",
-                    "Vui lòng thêm/import account hoặc nhập tài khoản và mật khẩu.",
+                    "Vui lòng thêm/import account hoặc nhập tài khoản, mật khẩu cũ và mật khẩu mới.",
                 )
                 return
-            account = Account(username=user, old_password=old_pw, new_password="")
-            run_iid = None
+            accounts = [Account(username=user, old_password=old_pw, new_password=new_pw)]
+            run_iids = [None]
 
         form_new_pw = self.view.get_new_pw()
-        if not account.new_password and form_new_pw:
-            account.new_password = form_new_pw
-            if run_iid:
-                self.view.tree.set(run_iid, "new_password", "•" * len(form_new_pw))
+        if form_new_pw:
+            for index, account in enumerate(accounts):
+                if not account.new_password:
+                    account.new_password = form_new_pw
+                    iid = run_iids[index]
+                    if iid:
+                        self.view.tree.set(iid, "new_password", "•" * len(form_new_pw))
 
-        if not account.new_password:
+        missing_new_pw = [acc.username for acc in accounts if not acc.new_password]
+        if missing_new_pw:
             messagebox.showwarning(
                 "Thiếu mật khẩu mới",
-                "Vui lòng cập nhật mật khẩu mới trong danh sách trước khi chạy.",
+                f"Còn {len(missing_new_pw)} account chưa có mật khẩu mới. "
+                "Vui lòng cập nhật danh sách hoặc nhập MK mới chung.",
             )
             return
 
-        if run_iid:
-            self.view.tree_update_status(run_iid, "-")
+        total = len(accounts)
+        for iid in run_iids:
+            if iid:
+                self.view.tree_update_status(iid, "-")
 
         self.model.running = True
         self.view.btn_run.config(state="disabled")
-        self.view.log("▶ Mở My Account VNG, đổi mật khẩu 1 account rồi dừng...")
-        self.view.set_status("● Đang điền và cập nhật mật khẩu...")
-        self.view.set_progress(0, 1)
+        self.view.log(f"▶ Đổi mật khẩu tuần tự {total} account...")
+        self.view.set_status("● Đang đổi mật khẩu tuần tự...")
+        self.view.set_progress(0, total)
 
-        def _on_result(result) -> None:
+        def _on_result(index, result) -> None:
             status = "ok" if result.success else "fail"
+            account = accounts[index]
             account.status = status
             account.note = result.message
 
+            run_iid = run_iids[index]
             if run_iid:
                 self.view.after(
                     0,
                     lambda iid=run_iid, status=status: self.view.tree_update_status(iid, status),
                 )
 
-            self.view.set_progress(1, 1)
-            if result.success:
-                self.view.set_status("● Đã bấm cập nhật đổi mật khẩu - dừng để kiểm tra")
-            else:
-                self.view.set_status("● Đổi mật khẩu thất bại")
+            done = index + 1
+            self.view.set_progress(done, total)
+            self.view.set_status(f"● Đã xử lý {done} / {total}")
 
         def _worker() -> None:
             try:
-                login_and_hold_account(
-                    account=account,
+                run_vng_password_change_batch(
+                    accounts=accounts,
                     url=url,
                     log=self.view.log,
                     on_result=_on_result,
